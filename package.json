@@ -1,0 +1,10 @@
+{
+  "name": "pasta-td",
+  "version": "1.0.0",
+  "description": "Pasta TD - An epic tower defense game made in 60 minutes with pasta puns!",
+  "scripts": {
+    "dev": "npx --yes serve -l 3000 .",
+    "start": "npx --yes serve -l 3000 ."
+  },
+  "license": "MIT"
+}

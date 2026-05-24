@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>🍝 Pasta TD — Al Dente Defense</title>
+<link rel="stylesheet" href="style.css" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🍝%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+
+<!-- LOGIN SCREEN -->
+<div id="loginScreen" class="screen visible">
+  <div class="login-box">
+    <h1 class="title">🍝 Pasta TD</h1>
+    <p class="tagline">Al Dente Defense — A Saucy Tower Defense</p>
+    <div class="login-tabs">
+      <button class="tab-btn active" data-tab="login">Login</button>
+      <button class="tab-btn" data-tab="register">Register</button>
+      <button class="tab-btn" data-tab="guest">Play as Guest</button>
+    </div>
+
+    <div class="tab-panel active" id="tab-login">
+      <input id="loginUser" type="text" placeholder="Username" maxlength="20" autocomplete="off" />
+      <input id="loginPass" type="password" placeholder="Password" maxlength="40" autocomplete="off" />
+      <button class="big-btn" id="btnLogin">🍴 Cook Up a Login</button>
+      <p class="hint" id="loginMsg"></p>
+    </div>
+
+    <div class="tab-panel" id="tab-register">
+      <input id="regUser" type="text" placeholder="Choose a username" maxlength="20" autocomplete="off" />
+      <input id="regPass" type="password" placeholder="Choose a password" maxlength="40" autocomplete="off" />
+      <button class="big-btn" id="btnRegister">🧑‍🍳 Knead a New Account</button>
+      <p class="hint" id="regMsg"></p>
+    </div>
+
+    <div class="tab-panel" id="tab-guest">
+      <p class="hint">Play instantly! Your save is stored locally in this browser.</p>
+      <button class="big-btn" id="btnGuest">🥖 Play as Guest</button>
+    </div>
+
+    <p class="credits">Made in 60 minutes 🤖 — Pasta puns 100% free range</p>
+  </div>
+</div>
+
+<!-- MAIN GAME -->
+<div id="gameScreen" class="screen">
+  <header class="topbar">
+    <div class="brand">🍝 Pasta TD</div>
+    <div class="stats">
+      <div class="stat" title="Lives — Diners eating your pasta means you lose them!"><span>❤️</span><span id="statLives">20</span></div>
+      <div class="stat" title="Gold — Earned by defeating enemies"><span>🪙</span><span id="statGold">200</span></div>
+      <div class="stat" title="Marinara Marks — Skill tree currency"><span>🥫</span><span id="statMarks">0</span></div>
+      <div class="stat" title="Sauce — Prestige currency"><span>🍅</span><span id="statSauce">0</span></div>
+      <div class="stat" title="Wave"><span>🌊</span><span id="statWave">1</span>/<span id="statMaxWave">30</span></div>
+      <div class="stat" title="Score"><span>⭐</span><span id="statScore">0</span></div>
+    </div>
+    <div class="topbar-right">
+      <div class="user-info"><span id="userLabel">Guest</span></div>
+      <button class="icon-btn" id="btnSpeed" title="Game Speed">▶ 1x</button>
+      <button class="icon-btn" id="btnPause" title="Pause">⏸</button>
+      <button class="icon-btn" id="btnSkillTree" title="Skill Tree">🌳</button>
+      <button class="icon-btn" id="btnPrestige" title="Prestige">✨</button>
+      <button class="icon-btn" id="btnSave" title="Save">💾</button>
+      <button class="icon-btn" id="btnLogout" title="Logout">🚪</button>
+    </div>
+  </header>
+
+  <main class="game-area">
+    <aside class="sidebar left">
+      <h3>🏗️ Pasta Towers</h3>
+      <div id="towerShop" class="tower-shop"></div>
+      <h3 style="margin-top:14px;">📜 Tutorial</h3>
+      <div class="tutorial">
+        <p><b>1.</b> Click a tower, then click a tile to build.</p>
+        <p><b>2.</b> Click a placed tower to upgrade or sell.</p>
+        <p><b>3.</b> Click <b>Start Wave</b> to send enemies.</p>
+        <p><b>4.</b> Survive 30 waves, then <b>Prestige</b> for permanent power!</p>
+      </div>
+    </aside>
+
+    <div class="canvas-wrap">
+      <canvas id="game" width="800" height="600"></canvas>
+      <div id="toast" class="toast"></div>
+      <div id="waveBanner" class="wave-banner"></div>
+      <div class="canvas-controls">
+        <button class="big-btn" id="btnStartWave">▶ Start Wave</button>
+      </div>
+    </div>
+
+    <aside class="sidebar right">
+      <div id="towerInfo" class="tower-info">
+        <h3>🍴 Tower Info</h3>
+        <p class="hint">Hover a tower in the shop or click one on the field to see details.</p>
+      </div>
+      <div id="upgradePanel" class="upgrade-panel" style="display:none;"></div>
+      <h3 style="margin-top:14px;">👹 Next Wave Preview</h3>
+      <div id="wavePreview" class="wave-preview"></div>
+    </aside>
+  </main>
+
+  <footer class="footer">
+    <span id="footerMsg">Welcome to Pasta TD — Place your first tower! 🍝</span>
+  </footer>
+</div>
+
+<!-- SKILL TREE MODAL -->
+<div id="skillTreeModal" class="modal">
+  <div class="modal-content wide">
+    <div class="modal-header">
+      <h2>🌳 Skill Tree — Spend Marinara Marks</h2>
+      <button class="close-btn" data-close="skillTreeModal">✖</button>
+    </div>
+    <p>Marinara Marks: <b id="marksDisplay">0</b> &nbsp;|&nbsp; Earn 1 per wave completed (+bonus on bosses).</p>
+    <div class="skill-tree" id="skillTreeGrid"></div>
+  </div>
+</div>
+
+<!-- PRESTIGE MODAL -->
+<div id="prestigeModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>✨ Prestige — Boil It All Down!</h2>
+      <button class="close-btn" data-close="prestigeModal">✖</button>
+    </div>
+    <p>Reset your run for permanent <b>🍅 Sauce Points</b>. Spend Sauce on permanent perks.</p>
+    <div id="prestigeInfo"></div>
+    <button class="big-btn danger" id="btnDoPrestige">🔥 Prestige Now</button>
+    <h3>🌟 Permanent Perks</h3>
+    <div class="prestige-perks" id="prestigePerks"></div>
+  </div>
+</div>
+
+<!-- GAME OVER MODAL -->
+<div id="gameOverModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2 id="gameOverTitle">🍝 Game Over</h2>
+    </div>
+    <p id="gameOverText"></p>
+    <div id="gameOverStats"></div>
+    <button class="big-btn" id="btnRestart">🔁 Try Again</button>
+    <button class="big-btn" id="btnPrestigeFromGO" style="display:none;">✨ Prestige</button>
+  </div>
+</div>
+
+<!-- VICTORY MODAL -->
+<div id="victoryModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>🏆 Victory! Mamma Mia!</h2>
+    </div>
+    <p>You survived all 30 waves! The diners are full!</p>
+    <div id="victoryStats"></div>
+    <button class="big-btn" id="btnVictoryPrestige">✨ Prestige for Bonuses</button>
+    <button class="big-btn" id="btnVictoryEndless">♾️ Endless Mode</button>
+  </div>
+</div>
+
+<script src="js/content.js"></script>
+<script src="js/save.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
