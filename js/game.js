@@ -112,8 +112,9 @@ const Game = {
   generatePath() {
     // Hand-crafted path through the canvas grid: winding S-curve
     const cs = this.cellSize;
+    // Path waypoints (in cell coords). Canvas is 20 cols x 15 rows (800x600 / 40).
     const pts = [
-      [0, 2], [4, 2], [4, 6], [10, 6], [10, 2], [14, 2], [14, 10], [6, 10], [6, 13], [16, 13], [16, 5], [19, 5], [19, 14], [20, 14]
+      [0, 2], [4, 2], [4, 6], [10, 6], [10, 2], [14, 2], [14, 10], [6, 10], [6, 13], [16, 13], [16, 5], [19, 5], [19, 14]
     ];
     // Translate cell coords to pixel centers
     this.path = pts.map(([cx, cy]) => ({ x: cx * cs + cs / 2, y: cy * cs + cs / 2 }));
