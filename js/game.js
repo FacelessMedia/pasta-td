@@ -87,8 +87,10 @@ const Game = {
   start() {
     this.save = SaveSystem.load();
     this.newRun(true);
-    this.running = true;
-    requestAnimationFrame(this.loop.bind(this));
+    if (!this.running) {
+      this.running = true;
+      requestAnimationFrame(this.loop.bind(this));
+    }
   },
 
   newRun(firstStart) {
