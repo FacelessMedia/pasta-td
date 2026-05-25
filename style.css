@@ -491,11 +491,12 @@ input:focus { border-color: var(--gold); }
 .bestiary-card .name.unknown { color: rgba(255,255,255,0.5); }
 .bestiary-card .stats { font-size: 11px; color: rgba(255,255,255,0.7); margin-top: 4px; line-height: 1.4; }
 .bestiary-card .lore { font-size: 10px; font-style: italic; color: rgba(255,255,255,0.55); margin-top: 6px; line-height: 1.3; }
-.bestiary-card .tag { display: inline-block; font-size: 9px; padding: 1px 6px; border-radius: 8px; background: var(--wood); margin: 1px; }
-.bestiary-card .tag.boss { background: var(--tomato); }
-.bestiary-card .tag.fast { background: #9b59b6; }
-.bestiary-card .tag.tank { background: var(--basil); }
-.bestiary-card .tag.armor { background: var(--garlic); color: #333; }
+.tag { display: inline-block; font-size: 9px; padding: 1px 6px; border-radius: 8px; background: var(--wood); margin: 1px; color: var(--cream); text-transform: uppercase; letter-spacing: 0.5px; }
+.tag.boss { background: var(--tomato); }
+.tag.fast { background: #9b59b6; }
+.tag.tank { background: var(--basil); }
+.tag.armor { background: var(--garlic); color: #333; }
+.tag.basic { background: #555; }
 
 /* ============ TUTORIAL ============ */
 .tutorial-grid {

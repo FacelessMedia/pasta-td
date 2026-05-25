@@ -582,11 +582,12 @@ const UI = {
   showEnemyIntro(typeId) {
     const def = ENEMIES[typeId];
     if (!def) return;
-    const tags = (def.tags || []).map(t => `<span class="bestiary-card"><span class="tag ${t}">${t}</span></span>`).join(' ');
+    const tags = (def.tags || []).map(t => `<span class="tag ${t}">${t}</span>`).join(' ');
     this.el.enemyIntroBody.innerHTML = `
       <div class="enemy-intro-emoji">${def.emoji}</div>
       <div class="enemy-intro-info">
         <h3>${def.name}${def.boss ? ' 👑' : ''}</h3>
+        <div style="margin-bottom:6px">${tags}</div>
         <div class="stat-line"><span>❤️ Health</span><b>${def.hp}</b></div>
         <div class="stat-line"><span>👟 Speed</span><b>${def.speed}</b></div>
         <div class="stat-line"><span>🪙 Bounty</span><b>${def.gold}</b></div>
