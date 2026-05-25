@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>🍝 Pasta TD — Al Dente Defense</title>
+<title>🍝 Pasta TD — Kitchen Defense</title>
 <link rel="stylesheet" href="style.css" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🍝%3C/text%3E%3C/svg%3E">
 </head>
@@ -13,7 +13,7 @@
 <div id="loginScreen" class="screen visible">
   <div class="login-box">
     <h1 class="title">🍝 Pasta TD</h1>
-    <p class="tagline">Al Dente Defense — A Saucy Tower Defense</p>
+    <p class="tagline">Kitchen Defense — Defend your pantry against the pasta uprising!</p>
     <div class="login-tabs">
       <button class="tab-btn active" data-tab="login">Login</button>
       <button class="tab-btn" data-tab="register">Register</button>
@@ -23,14 +23,14 @@
     <div class="tab-panel active" id="tab-login">
       <input id="loginUser" type="text" placeholder="Username" maxlength="20" autocomplete="off" />
       <input id="loginPass" type="password" placeholder="Password" maxlength="40" autocomplete="off" />
-      <button class="big-btn" id="btnLogin">🍴 Cook Up a Login</button>
+      <button class="big-btn" id="btnLogin">🍴 Enter the Kitchen</button>
       <p class="hint" id="loginMsg"></p>
     </div>
 
     <div class="tab-panel" id="tab-register">
-      <input id="regUser" type="text" placeholder="Choose a username" maxlength="20" autocomplete="off" />
+      <input id="regUser" type="text" placeholder="Choose a chef name" maxlength="20" autocomplete="off" />
       <input id="regPass" type="password" placeholder="Choose a password" maxlength="40" autocomplete="off" />
-      <button class="big-btn" id="btnRegister">🧑‍🍳 Knead a New Account</button>
+      <button class="big-btn" id="btnRegister">🧑‍🍳 Become Head Chef</button>
       <p class="hint" id="regMsg"></p>
     </div>
 
@@ -39,17 +39,53 @@
       <button class="big-btn" id="btnGuest">🥖 Play as Guest</button>
     </div>
 
-    <p class="credits">Made in 60 minutes 🤖 — Pasta puns 100% free range</p>
+    <p class="credits">A pasta-themed tower defense 🤖 — Every pun is artisanal</p>
+  </div>
+</div>
+
+<!-- MAIN MENU SCREEN -->
+<div id="menuScreen" class="screen">
+  <div class="menu-box">
+    <h1 class="title">🍝 Pasta TD</h1>
+    <p class="tagline">Welcome back, <span id="menuUserLabel">Chef</span>!</p>
+    <div class="menu-summary" id="menuSummary"></div>
+    <div class="menu-grid">
+      <button class="menu-btn primary" id="mnuPlay">
+        <span class="ico">▶️</span><span class="lbl">Play</span>
+        <span class="sub">Defend the kitchen</span>
+      </button>
+      <button class="menu-btn" id="mnuTutorial">
+        <span class="ico">📖</span><span class="lbl">How to Play</span>
+        <span class="sub">Learn the basics</span>
+      </button>
+      <button class="menu-btn" id="mnuBestiary">
+        <span class="ico">📚</span><span class="lbl">Bestiary</span>
+        <span class="sub">Pasta you've fought</span>
+      </button>
+      <button class="menu-btn" id="mnuSkillTree">
+        <span class="ico">🌳</span><span class="lbl">Skill Tree</span>
+        <span class="sub">Spend Marinara Marks</span>
+      </button>
+      <button class="menu-btn" id="mnuPrestige">
+        <span class="ico">✨</span><span class="lbl">Prestige</span>
+        <span class="sub">Permanent upgrades</span>
+      </button>
+      <button class="menu-btn" id="mnuLogout">
+        <span class="ico">🚪</span><span class="lbl">Logout</span>
+        <span class="sub">Switch chef</span>
+      </button>
+    </div>
   </div>
 </div>
 
 <!-- MAIN GAME -->
 <div id="gameScreen" class="screen">
   <header class="topbar">
+    <button class="icon-btn" id="btnMenu" title="Main Menu">☰ Menu</button>
     <div class="brand">🍝 Pasta TD</div>
     <div class="stats">
-      <div class="stat" title="Lives — Diners eating your pasta means you lose them!"><span>❤️</span><span id="statLives">20</span></div>
-      <div class="stat" title="Gold — Earned by defeating enemies"><span>🪙</span><span id="statGold">200</span></div>
+      <div class="stat" title="Lives — Pasta reaching the goal eats them!"><span>❤️</span><span id="statLives">20</span></div>
+      <div class="stat" title="Gold — Earned by defeating pasta"><span>🪙</span><span id="statGold">200</span></div>
       <div class="stat" title="Marinara Marks — Skill tree currency"><span>🥫</span><span id="statMarks">0</span></div>
       <div class="stat" title="Sauce — Prestige currency"><span>🍅</span><span id="statSauce">0</span></div>
       <div class="stat" title="Wave"><span>🌊</span><span id="statWave">1</span>/<span id="statMaxWave">30</span></div>
@@ -60,22 +96,23 @@
       <button class="icon-btn" id="btnSpeed" title="Game Speed">▶ 1x</button>
       <button class="icon-btn" id="btnPause" title="Pause">⏸</button>
       <button class="icon-btn" id="btnSkillTree" title="Skill Tree">🌳</button>
+      <button class="icon-btn" id="btnBestiary" title="Bestiary">📚</button>
       <button class="icon-btn" id="btnPrestige" title="Prestige">✨</button>
       <button class="icon-btn" id="btnSave" title="Save">💾</button>
-      <button class="icon-btn" id="btnLogout" title="Logout">🚪</button>
     </div>
   </header>
 
   <main class="game-area">
     <aside class="sidebar left">
-      <h3>🏗️ Pasta Towers</h3>
+      <h3>🍳 Kitchen Tools</h3>
       <div id="towerShop" class="tower-shop"></div>
-      <h3 style="margin-top:14px;">📜 Tutorial</h3>
+      <h3 style="margin-top:14px;">📜 Quick Tips</h3>
       <div class="tutorial">
-        <p><b>1.</b> Click a tower, then click a tile to build.</p>
-        <p><b>2.</b> Click a placed tower to upgrade or sell.</p>
-        <p><b>3.</b> Click <b>Start Wave</b> to send enemies.</p>
-        <p><b>4.</b> Survive 30 waves, then <b>Prestige</b> for permanent power!</p>
+        <p><b>1.</b> Click a tool, then click an empty tile to build.</p>
+        <p><b>2.</b> Click a placed tool to upgrade or sell.</p>
+        <p><b>3.</b> Hover wave preview to see enemy info.</p>
+        <p><b>4.</b> Beat 30 waves, then ✨ <b>Prestige</b>!</p>
+        <button class="link-btn" id="btnOpenTutorial">📖 Full Tutorial</button>
       </div>
     </aside>
 
@@ -90,17 +127,21 @@
 
     <aside class="sidebar right">
       <div id="towerInfo" class="tower-info">
-        <h3>🍴 Tower Info</h3>
-        <p class="hint">Hover a tower in the shop or click one on the field to see details.</p>
+        <h3>🍴 Info Panel</h3>
+        <p class="hint">Hover a tool or enemy below to see details. Click placed tools to upgrade.</p>
       </div>
       <div id="upgradePanel" class="upgrade-panel" style="display:none;"></div>
-      <h3 style="margin-top:14px;">👹 Next Wave Preview</h3>
+      <h3 style="margin-top:14px;">👹 Next Wave</h3>
       <div id="wavePreview" class="wave-preview"></div>
+      <h3 style="margin-top:14px;">📜 Spotted Pasta</h3>
+      <div id="enemyHoverPanel" class="enemy-hover-panel">
+        <p class="hint" style="font-size:11px">Hover an enemy icon above to inspect.</p>
+      </div>
     </aside>
   </main>
 
   <footer class="footer">
-    <span id="footerMsg">Welcome to Pasta TD — Place your first tower! 🍝</span>
+    <span id="footerMsg">🍝 Welcome to the kitchen! Place your first tool.</span>
   </footer>
 </div>
 
@@ -111,7 +152,7 @@
       <h2>🌳 Skill Tree — Spend Marinara Marks</h2>
       <button class="close-btn" data-close="skillTreeModal">✖</button>
     </div>
-    <p>Marinara Marks: <b id="marksDisplay">0</b> &nbsp;|&nbsp; Earn 1 per wave completed (+bonus on bosses).</p>
+    <p>Marinara Marks: <b id="marksDisplay">0</b> &nbsp;|&nbsp; Earn 1+ per wave completed (bonus on bosses).</p>
     <div class="skill-tree" id="skillTreeGrid"></div>
   </div>
 </div>
@@ -131,6 +172,79 @@
   </div>
 </div>
 
+<!-- BESTIARY MODAL -->
+<div id="bestiaryModal" class="modal">
+  <div class="modal-content wide">
+    <div class="modal-header">
+      <h2>📚 The Pasta Bestiary</h2>
+      <button class="close-btn" data-close="bestiaryModal">✖</button>
+    </div>
+    <p>All pasta-kind you've encountered in your runs. Defeat them to fill the codex.</p>
+    <div class="bestiary-grid" id="bestiaryGrid"></div>
+  </div>
+</div>
+
+<!-- TUTORIAL MODAL -->
+<div id="tutorialModal" class="modal">
+  <div class="modal-content wide">
+    <div class="modal-header">
+      <h2>📖 How to Play Pasta TD</h2>
+      <button class="close-btn" data-close="tutorialModal">✖</button>
+    </div>
+    <div class="tutorial-grid">
+      <div class="tut-step">
+        <div class="tut-num">1</div>
+        <h3>🍳 Place Kitchen Tools</h3>
+        <p>Click a tool in the left shop, then click an empty tile on the kitchen floor to build it. Each tool costs gold (🪙).</p>
+      </div>
+      <div class="tut-step">
+        <div class="tut-num">2</div>
+        <h3>🌊 Start a Wave</h3>
+        <p>Hit <b>▶ Start Wave</b> to send pasta down the path. Defeat them all before they reach the dining room!</p>
+      </div>
+      <div class="tut-step">
+        <div class="tut-num">3</div>
+        <h3>🔧 Upgrade Tools</h3>
+        <p>Click a placed tool to open the upgrade panel. Spend gold on damage, range, fire rate, splash, or sell for 70% back.</p>
+      </div>
+      <div class="tut-step">
+        <div class="tut-num">4</div>
+        <h3>🌳 Skill Tree</h3>
+        <p>Earn <b>🥫 Marinara Marks</b> by completing waves. Spend in the Skill Tree on Tomato (offense), Garlic (economy), or Basil (defense) branches.</p>
+      </div>
+      <div class="tut-step">
+        <div class="tut-num">5</div>
+        <h3>✨ Prestige</h3>
+        <p>Reach wave 5+ and Prestige to reset your run for <b>🍅 Sauce Points</b> — permanent currency for game-changing perks.</p>
+      </div>
+      <div class="tut-step">
+        <div class="tut-num">6</div>
+        <h3>🍅 Synergies</h3>
+        <p>Place a <b>🧄 Garlic Press</b> next to your towers to buff their damage. Use <b>🧂 Salt Shaker</b> to slow fast enemies before your big hitters finish them.</p>
+      </div>
+    </div>
+    <h3 style="margin-top:14px;">⌨️ Keyboard Shortcuts</h3>
+    <div class="hotkeys">
+      <div><kbd>1-9</kbd> Select tower</div>
+      <div><kbd>Space</kbd> Pause</div>
+      <div><kbd>Enter</kbd> Start wave</div>
+      <div><kbd>Esc</kbd> Deselect</div>
+    </div>
+    <button class="big-btn" id="btnTutorialDone" style="margin-top:14px;">👍 Got it!</button>
+  </div>
+</div>
+
+<!-- ENEMY INTRO POPUP -->
+<div id="enemyIntroModal" class="modal">
+  <div class="modal-content enemy-intro">
+    <div class="modal-header">
+      <h2>⚠️ New Enemy Spotted!</h2>
+    </div>
+    <div class="enemy-intro-body" id="enemyIntroBody"></div>
+    <button class="big-btn" id="btnEnemyIntroOK">🍴 Bring it on!</button>
+  </div>
+</div>
+
 <!-- GAME OVER MODAL -->
 <div id="gameOverModal" class="modal">
   <div class="modal-content">
@@ -141,6 +255,7 @@
     <div id="gameOverStats"></div>
     <button class="big-btn" id="btnRestart">🔁 Try Again</button>
     <button class="big-btn" id="btnPrestigeFromGO" style="display:none;">✨ Prestige</button>
+    <button class="big-btn" id="btnGOMenu" style="background:#444">☰ Main Menu</button>
   </div>
 </div>
 
@@ -150,7 +265,7 @@
     <div class="modal-header">
       <h2>🏆 Victory! Mamma Mia!</h2>
     </div>
-    <p>You survived all 30 waves! The diners are full!</p>
+    <p>You survived all 30 waves and saved the kitchen!</p>
     <div id="victoryStats"></div>
     <button class="big-btn" id="btnVictoryPrestige">✨ Prestige for Bonuses</button>
     <button class="big-btn" id="btnVictoryEndless">♾️ Endless Mode</button>

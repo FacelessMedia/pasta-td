@@ -24,6 +24,9 @@ const Game = {
   audioCtx: null,
   bossAlive: false,
   endlessWave: 0,
+  tauntTimer: 0,
+  introQueue: [],
+  pendingNewRun: false,
 
   init() {
     this.canvas = document.getElementById('game');
@@ -43,7 +46,7 @@ const Game = {
     UI.el.btnSpeed.addEventListener('click', () => this.cycleSpeed());
     UI.el.btnRestart.addEventListener('click', () => {
       UI.el.gameOverModal.classList.remove('visible');
-      this.newRun();
+      this.newRun(true, { clearLastRun: true });
     });
     UI.el.btnPrestigeFromGO.addEventListener('click', () => {
       UI.el.gameOverModal.classList.remove('visible');
@@ -93,21 +96,31 @@ const Game = {
     }
   },
 
-  newRun(firstStart) {
+  stop() {
+    this.running = false;
+  },
+
+  newRun(firstStart, opts) {
+    opts = opts || {};
     this.state = makeRunState(this.save);
     this.selectedTowerType = null;
     this.selectedTower = null;
     this.spawnQueue = [];
     this.bossAlive = false;
     this.endlessWave = 0;
+    this.introQueue = [];
     this.buildGrid = Array.from({ length: this.rows }, () => new Array(this.cols).fill(0));
     this.markPathOnGrid();
+    // Only clear stored run if requested (after game over or prestige)
+    if (opts.clearLastRun && this.save) { this.save.lastRun = null; this.saveGame(); }
     UI.hideUpgradePanel();
     UI.renderTowerShop();
     UI.renderWavePreview();
     UI.updateStats(this.state);
-    UI.setFooter('🍝 Pick a pasta and place it. Hit Start Wave when ready!');
+    UI.setFooter('Pick a kitchen tool and place it. Hit Start Wave when ready!');
     if (firstStart) UI.banner('Get cooking! 🍝', 1500);
+    UI.el.btnStartWave.disabled = false;
+    UI.el.btnStartWave.textContent = '▶ Start Wave 1';
   },
 
   // ============ PATH GENERATION ============
@@ -254,6 +267,18 @@ const Game = {
   spawnEnemy(type) {
     const def = ENEMIES[type];
     if (!def) return;
+    // Bestiary discovery — first-time popup
+    if (!this.save.discoveredEnemies) this.save.discoveredEnemies = {};
+    if (!this.save.discoveredEnemies[type]) {
+      this.save.discoveredEnemies[type] = true;
+      // Put intro into queue, show after current popup dismissed (if any)
+      this.introQueue.push(type);
+      if (!UI.el.enemyIntroModal.classList.contains('visible')) {
+        const nextType = this.introQueue.shift();
+        UI.showEnemyIntro(nextType);
+      }
+      this.saveGame();
+    }
     const scale = 1 + this.endlessWave * 0.25;
     const hpScale = this.state.endlessMode ? scale * scale : 1;
     const goldScale = this.state.endlessMode ? scale : 1;
@@ -303,6 +328,13 @@ const Game = {
   killEnemy(enemy, srcTower) {
     if (enemy._dead) return;
     enemy._dead = true;
+    // Mark discovered (in case spawn missed it)
+    if (this.save.discoveredEnemies) this.save.discoveredEnemies[enemy.type] = true;
+    // Sometimes taunt on kill
+    if (srcTower && Math.random() < 0.18 && srcTower.def.taunts && this.tauntsEnabled()) {
+      const t = srcTower.def.taunts[Math.floor(Math.random() * srcTower.def.taunts.length)];
+      UI.spawnTaunt(t, srcTower.x, srcTower.y - 18);
+    }
     let gold = enemy.gold;
     gold *= this.computeStat('goldMult', 1);
     gold *= 1 + (this.save.prestigePerks.globalGold || 0) * 0.05;
@@ -469,10 +501,11 @@ const Game = {
     this.save.prestigeLevel++;
     this.save.totalScore += this.state.score;
     this.save.runsCompleted++;
-    this.saveGame(true);
+    this.save.lastRun = null; // clear run state before saving
+    SaveSystem.save(this.save);
     UI.el.prestigeModal.classList.remove('visible');
-    UI.banner(`🍅 +${gain} Sauce!`, 2000);
-    this.newRun();
+    UI.banner(`+${gain} Sauce!`, 2000);
+    this.newRun(true, { clearLastRun: true });
     setTimeout(() => UI.openPrestige(), 500);
   },
 
@@ -507,8 +540,9 @@ const Game = {
       this.state.lives += node.effect.value;
     }
     UI.updateStats(this.state);
-    UI.renderTowerShop();
+    if (UI.el.towerShop) UI.renderTowerShop();
     this.playSound('upgrade');
+    this.saveGame();
   },
 
   // ============ INPUT ============
@@ -757,9 +791,44 @@ const Game = {
       if (f.life <= 0) fx.splice(i, 1);
     }
 
+    // Taunt timer — periodic random taunts from active towers
+    this.tauntTimer -= dt;
+    if (this.tauntTimer <= 0) {
+      this.tauntTimer = 3 + Math.random() * 3;
+      this.tryRandomTaunt();
+    }
+
     // Check wave end
     if (this.state.waveActive && this.spawnQueue.length === 0 && enemies.length === 0) {
       this.finishWave();
+    }
+  },
+
+  tauntsEnabled() {
+    return !this.save || !this.save.settings || this.save.settings.taunts !== false;
+  },
+  tryRandomTaunt() {
+    if (!this.tauntsEnabled()) return;
+    if (this.state.enemies.length === 0) return;
+    // Pick a tower with at least one enemy in range and taunts
+    const candidates = this.state.towers.filter(t => t.def.taunts && t.def.taunts.length > 0);
+    if (candidates.length === 0) return;
+    // Shuffle, find one with an enemy in range
+    for (let i = candidates.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+    }
+    for (const tower of candidates) {
+      const range = tower.getRange();
+      const hasEnemyInRange = this.state.enemies.some(e => {
+        const dx = e.x - tower.x, dy = e.y - tower.y;
+        return dx * dx + dy * dy <= range * range;
+      });
+      if (hasEnemyInRange) {
+        const t = tower.def.taunts[Math.floor(Math.random() * tower.def.taunts.length)];
+        UI.spawnTaunt(t, tower.x, tower.y - 18);
+        return;
+      }
     }
   },
 
@@ -1134,9 +1203,14 @@ const Game = {
 function resumeRunIfAvailable() {
   if (!Game.save.lastRun) return;
   const lr = Game.save.lastRun;
-  // Only resume if user has not prestiged since (i.e., quick reload)
   if (typeof lr.wave !== 'number') return;
-  if (lr.wave === 0 && (!lr.towers || lr.towers.length === 0)) return;
+  // Resume if there's any progress: wave, towers, skills, or extra marks
+  const startMarks = (Game.save.prestigePerks && (Game.save.prestigePerks.startMarks || 0)) * 1;
+  const hasProgress = lr.wave > 0
+    || (lr.towers && lr.towers.length > 0)
+    || (lr.skillPoints && Object.keys(lr.skillPoints).length > 0)
+    || ((lr.marks || 0) > startMarks);
+  if (!hasProgress) return;
   // Restore state
   Game.state.wave = lr.wave;
   Game.state.gold = lr.gold;
