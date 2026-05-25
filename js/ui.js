@@ -244,7 +244,7 @@ const UI = {
       <div class="ms-item">🍅 Sauce: <b>${s.sauce}</b></div>
       <div class="ms-item">✨ Prestige: <b>${s.prestigeLevel}</b></div>
       <div class="ms-item">🏆 Best Wave: <b>${s.highWave}</b></div>
-      <div class="ms-item">📚 Bestiary: <b>${discovered}/${total}</b></div>
+      <div class="ms-item">� Pastadex: <b>${discovered}/${total}</b></div>
       <div class="ms-item">🔁 Runs: <b>${s.runsCompleted}</b></div>
     `;
   },
@@ -373,13 +373,16 @@ const UI = {
       card.className = 'tower-card' + (!unlocked ? ' locked' : (!canAfford ? ' cant-afford' : ''));
       if (Game.selectedTowerType && Game.selectedTowerType.id === t.id) card.classList.add('selected');
       card.innerHTML = `
-        <div class="tower-emoji">${t.emoji}</div>
+        <div class="tower-emoji"></div>
         <div class="tower-meta">
           <div class="name">${t.name} <span style="opacity:0.5;font-size:9px">[${i + 1}]</span></div>
           <div class="cost">${unlocked ? '🪙 ' + cost : '🔒 Wave ' + t.unlockWave}</div>
           <div class="desc">${t.desc}</div>
         </div>
       `;
+      const thumbHolder = card.querySelector('.tower-emoji');
+      const thumbCanvas = Sprites.thumbCanvas(unlocked ? 'tower' : 'locked', t.id, t, 48);
+      thumbHolder.appendChild(thumbCanvas);
       if (unlocked) {
         card.addEventListener('click', () => {
           if (s.gold < cost) {
@@ -478,7 +481,8 @@ const UI = {
       const div = document.createElement('div');
       div.className = 'preview-enemy';
       div.title = `${def.name} x${group.count} — hover for details`;
-      div.textContent = def.emoji;
+      const cv = Sprites.thumbCanvas('enemy', group.type, def, 36);
+      div.appendChild(cv);
       div.dataset.count = group.count;
       div.addEventListener('mouseenter', () => this.showEnemyHover(group.type, group.count));
       div.addEventListener('click', () => this.showEnemyHover(group.type, group.count));
@@ -715,39 +719,118 @@ const UI = {
     });
   },
 
-  // ===== BESTIARY =====
+  // ===== PASTADEX =====
+  pastadexTab: 'enemies',
   openBestiary() {
+    if (!this._pdexTabsBound) {
+      document.querySelectorAll('.pdex-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+          this.pastadexTab = btn.dataset.pdex;
+          document.querySelectorAll('.pdex-tab').forEach(b => b.classList.toggle('active', b === btn));
+          this.renderBestiary();
+        });
+      });
+      this._pdexTabsBound = true;
+    }
     this.renderBestiary();
     this.el.bestiaryModal.classList.add('visible');
   },
   renderBestiary() {
     this.el.bestiaryGrid.innerHTML = '';
-    const discovered = Game.save.discoveredEnemies || {};
+    // Update counts
+    const discE = Game.save.discoveredEnemies || {};
+    const discT = Game.save.discoveredTowers || {};
+    const totalE = Object.keys(ENEMIES).length;
+    const totalT = TOWERS.length;
+    const seenE = Object.keys(discE).length;
+    const seenT = Object.keys(discT).length;
+    const eCount = document.getElementById('pdexEnemyCount');
+    const tCount = document.getElementById('pdexTowerCount');
+    if (eCount) eCount.textContent = seenE + '/' + totalE;
+    if (tCount) tCount.textContent = seenT + '/' + totalT;
+    // Render active tab
+    if (this.pastadexTab === 'towers') {
+      this.renderPastadexTowers(discT, seenT, totalT);
+    } else {
+      this.renderPastadexEnemies(discE, seenE, totalE);
+    }
+  },
+  renderPastadexEnemies(discovered, seen, total) {
+    const fill = document.getElementById('pdexBarFill');
+    const lbl = document.getElementById('pdexBarLabel');
+    if (fill) fill.style.width = (total ? (seen/total*100) : 0) + '%';
+    if (lbl) lbl.textContent = `${seen} / ${total} pasta discovered`;
     Object.entries(ENEMIES).forEach(([id, def]) => {
-      const seen = !!discovered[id];
+      const isSeen = !!discovered[id];
       const div = document.createElement('div');
-      div.className = 'bestiary-card' + (def.boss ? ' boss' : '') + (seen ? '' : ' undiscovered');
-      const tags = (def.tags || []).map(t => `<span class="tag ${t}">${t}</span>`).join(' ');
-      if (seen) {
-        div.innerHTML = `
-          <div class="emoji">${def.emoji}</div>
-          <div class="name">${def.name}</div>
-          <div style="margin-top:3px">${tags}</div>
+      div.className = 'bestiary-card' + (def.boss ? ' boss' : '') + (isSeen ? '' : ' undiscovered');
+      // Canvas thumbnail
+      const thumbWrap = document.createElement('div');
+      thumbWrap.className = 'pdex-thumb';
+      const canvas = Sprites.thumbCanvas(isSeen ? 'enemy' : 'locked', id, def, 96);
+      thumbWrap.appendChild(canvas);
+      div.appendChild(thumbWrap);
+      const body = document.createElement('div');
+      body.className = 'pdex-body';
+      if (isSeen) {
+        const tags = (def.tags || []).map(t => `<span class="tag ${t}">${t}</span>`).join(' ');
+        body.innerHTML = `
+          <div class="name">${def.name}${def.boss ? ' <span style="color:#ffd700">👑</span>' : ''}</div>
+          <div class="tag-row">${tags}</div>
           <div class="stats">
-            ❤️ ${def.hp} HP &nbsp; 👟 ${def.speed} &nbsp; 🪙 ${def.gold}
-            ${def.armor ? '<br>🛡️ ' + Math.round(def.armor*100) + '% armor' : ''}
+            ❤️ <b>${def.hp}</b> HP &nbsp; 👟 <b>${def.speed}</b> &nbsp; 🪙 <b>${def.gold}</b>
+            ${def.armor ? '<br>🛡️ <b>' + Math.round(def.armor*100) + '%</b> armor' : ''}
             <br>💪 ${def.strength}
-            <br>💔 ${def.weakness}
+            <br>💔 Weak to: ${def.weakness}
           </div>
           <div class="lore">"${def.lore}"</div>
         `;
       } else {
-        div.innerHTML = `
-          <div class="emoji">❓</div>
+        body.innerHTML = `
           <div class="name unknown">??? UNDISCOVERED</div>
-          <div class="stats" style="opacity:0.6">Defeat one to reveal!</div>
+          <div class="stats" style="opacity:0.6">Encounter this pasta to reveal it!</div>
         `;
       }
+      div.appendChild(body);
+      this.el.bestiaryGrid.appendChild(div);
+    });
+  },
+  renderPastadexTowers(discovered, seen, total) {
+    const fill = document.getElementById('pdexBarFill');
+    const lbl = document.getElementById('pdexBarLabel');
+    if (fill) fill.style.width = (total ? (seen/total*100) : 0) + '%';
+    if (lbl) lbl.textContent = `${seen} / ${total} kitchen tools collected`;
+    TOWERS.forEach((def) => {
+      const isSeen = !!discovered[def.id];
+      const div = document.createElement('div');
+      div.className = 'bestiary-card tower' + (isSeen ? '' : ' undiscovered');
+      const thumbWrap = document.createElement('div');
+      thumbWrap.className = 'pdex-thumb';
+      const canvas = Sprites.thumbCanvas(isSeen ? 'tower' : 'locked', def.id, def, 96);
+      thumbWrap.appendChild(canvas);
+      div.appendChild(thumbWrap);
+      const body = document.createElement('div');
+      body.className = 'pdex-body';
+      if (isSeen) {
+        body.innerHTML = `
+          <div class="name">${def.name}</div>
+          <div class="stats">
+            💥 <b>${def.damage}</b> dmg &nbsp; 🎯 <b>${def.range}</b> range &nbsp; ⚡ <b>${def.fireRate}</b>/s
+            ${def.splash ? '<br>💢 Splash: <b>' + def.splash + '</b>' : ''}
+            ${def.slow ? '<br>🌀 Slow: <b>' + Math.round(def.slow.factor*100) + '% / ' + def.slow.duration + 's</b>' : ''}
+            ${def.aura ? '<br>✨ Aura: <b>+' + Math.round(def.aura*100) + '%</b> dmg' : ''}
+            ${def.pierce ? '<br>🔫 <b>Piercing beam</b>' : ''}
+            <br>🪙 Cost: <b>${def.cost}</b>
+          </div>
+          <div class="lore">"${def.lore}"</div>
+        `;
+      } else {
+        body.innerHTML = `
+          <div class="name unknown">??? LOCKED</div>
+          <div class="stats" style="opacity:0.6">Unlocks at wave <b>${def.unlockWave}</b>. Place one to collect!</div>
+        `;
+      }
+      div.appendChild(body);
       this.el.bestiaryGrid.appendChild(div);
     });
   },
@@ -763,7 +846,7 @@ const UI = {
     if (!def) return;
     const tags = (def.tags || []).map(t => `<span class="tag ${t}">${t}</span>`).join(' ');
     this.el.enemyIntroBody.innerHTML = `
-      <div class="enemy-intro-emoji">${def.emoji}</div>
+      <div class="enemy-intro-emoji" id="enemyIntroThumb"></div>
       <div class="enemy-intro-info">
         <h3>${def.name}${def.boss ? ' 👑' : ''}</h3>
         <div style="margin-bottom:6px">${tags}</div>
@@ -776,6 +859,8 @@ const UI = {
         <div class="lore">"${def.lore}"</div>
       </div>
     `;
+    const thumbHolder = document.getElementById('enemyIntroThumb');
+    if (thumbHolder) thumbHolder.appendChild(Sprites.thumbCanvas('enemy', typeId, def, 140));
     Game.paused = true;
     this.el.btnPause.textContent = '▶';
     this.el.enemyIntroModal.classList.add('visible');

@@ -59,8 +59,8 @@
         <span class="sub">Learn the basics</span>
       </button>
       <button class="menu-btn" id="mnuBestiary">
-        <span class="ico">📚</span><span class="lbl">Bestiary</span>
-        <span class="sub">Pasta you've fought</span>
+        <span class="ico">�</span><span class="lbl">Pastadex</span>
+        <span class="sub">Pasta &amp; tools collection</span>
       </button>
       <button class="menu-btn" id="mnuSkillTree">
         <span class="ico">🌳</span><span class="lbl">Skill Tree</span>
@@ -109,7 +109,7 @@
       <button class="icon-btn" id="btnSpeed" title="Game Speed">▶ 1x</button>
       <button class="icon-btn" id="btnPause" title="Pause">⏸</button>
       <button class="icon-btn" id="btnSkillTree" title="Skill Tree">🌳</button>
-      <button class="icon-btn" id="btnBestiary" title="Bestiary">📚</button>
+      <button class="icon-btn" id="btnBestiary" title="Pastadex">�</button>
       <button class="icon-btn" id="btnPrestige" title="Prestige">✨</button>
       <button class="icon-btn" id="btnSave" title="Save">💾</button>
     </div>
@@ -185,14 +185,22 @@
   </div>
 </div>
 
-<!-- BESTIARY MODAL -->
+<!-- PASTADEX MODAL -->
 <div id="bestiaryModal" class="modal">
   <div class="modal-content wide">
     <div class="modal-header">
-      <h2>📚 The Pasta Bestiary</h2>
+      <h2>� The Pastadex</h2>
       <button class="close-btn" data-close="bestiaryModal">✖</button>
     </div>
-    <p>All pasta-kind you've encountered in your runs. Defeat them to fill the codex.</p>
+    <p style="margin-bottom:6px">Your kitchen field guide. Encounter pasta-kind to fill the dex — locked entries appear as 🍝 question noodles.</p>
+    <div class="pastadex-tabs">
+      <button class="pdex-tab active" data-pdex="enemies">🍝 Pasta <span class="pdex-count" id="pdexEnemyCount">0/0</span></button>
+      <button class="pdex-tab" data-pdex="towers">🔪 Kitchen Tools <span class="pdex-count" id="pdexTowerCount">0/0</span></button>
+    </div>
+    <div class="pastadex-progress">
+      <div class="pdex-bar"><div class="pdex-bar-fill" id="pdexBarFill"></div></div>
+      <div class="pdex-bar-label" id="pdexBarLabel">0 / 0 discovered</div>
+    </div>
     <div class="bestiary-grid" id="bestiaryGrid"></div>
   </div>
 </div>
@@ -286,6 +294,7 @@
 </div>
 
 <script src="js/content.js"></script>
+<script src="js/sprites.js"></script>
 <script src="js/save.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/game.js"></script>

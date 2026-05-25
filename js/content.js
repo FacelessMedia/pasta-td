@@ -86,6 +86,7 @@ const TOWERS = [
     fireRate: 1.3,
     projectileSpeed: 650,
     projectile: '🗡',
+    projKind: 'blade',
     color: '#dfe6e9',
     unlockWave: 1,
     upgrades: {
@@ -114,6 +115,7 @@ const TOWERS = [
     projectileSpeed: 380,
     splash: 55,
     projectile: '💢',
+    projKind: 'bonk',
     color: '#cd853f',
     unlockWave: 2,
     upgrades: {
@@ -141,6 +143,7 @@ const TOWERS = [
     fireRate: 4.5,
     projectileSpeed: 520,
     projectile: '✦',
+    projKind: 'whisk',
     color: '#74b9ff',
     unlockWave: 3,
     upgrades: {
@@ -169,6 +172,7 @@ const TOWERS = [
     projectileSpeed: 360,
     splash: 85,
     projectile: '🔥',
+    projKind: 'ember',
     color: '#2d3436',
     unlockWave: 5,
     upgrades: {
@@ -197,6 +201,7 @@ const TOWERS = [
     projectileSpeed: 480,
     slow: { factor: 0.5, duration: 2.2 },
     projectile: '⋅',
+    projKind: 'salt',
     color: '#dfe6e9',
     unlockWave: 4,
     upgrades: {
@@ -250,6 +255,7 @@ const TOWERS = [
     fireRate: 5.5,
     projectileSpeed: 700,
     projectile: '◾',
+    projKind: 'bash',
     color: '#636e72',
     unlockWave: 6,
     upgrades: {
@@ -278,6 +284,7 @@ const TOWERS = [
     projectileSpeed: 380,
     splash: 55,
     projectile: '🟫',
+    projKind: 'pin',
     color: '#a0522d',
     unlockWave: 10,
     upgrades: {
@@ -558,7 +565,8 @@ function makeDefaultSave() {
     totalScore: 0,
     runsCompleted: 0,
     highWave: 0,
-    discoveredEnemies: {},  // {enemyId: true}  — bestiary tracking
+    discoveredEnemies: {},  // {enemyId: true}  — Pastadex tracking
+    discoveredTowers: {},   // {towerId: true}  — Pastadex tools tracking
     selectedMap: 'kitchen',
     mapHighWaves: {},       // {mapId: highestWave}
     tutorialSeen: false,

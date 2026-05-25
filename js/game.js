@@ -741,6 +741,12 @@ const Game = {
     const tower = this.makeTower(def, tx, ty);
     this.state.towers.push(tower);
     this.buildGrid[cy][cx] = 2;
+    // Track in Pastadex
+    if (!this.save.discoveredTowers) this.save.discoveredTowers = {};
+    if (!this.save.discoveredTowers[def.id]) {
+      this.save.discoveredTowers[def.id] = true;
+      this.saveGame();
+    }
     this.playSound('place');
     UI.updateStats(this.state);
     UI.renderTowerShop();
@@ -894,6 +900,8 @@ const Game = {
       tower.fireCooldown = 1 / fr;
       // Spawn projectile
       const pierceCount = this.computeStat('pierce', 0);
+      const dx = target.x - tower.x, dy = target.y - tower.y;
+      const angle = Math.atan2(dy, dx);
       const proj = {
         x: tower.x, y: tower.y,
         targetEnemy: target,
@@ -902,6 +910,9 @@ const Game = {
         splash: tower.getSplash(),
         slow: tower.def.slow ? { factor: tower.getSlowFactor(), duration: tower.getSlowDuration() } : null,
         symbol: tower.def.projectile || '•',
+        kind: tower.def.projKind || '_default',
+        angle: angle,
+        spin: 0,
         color: tower.def.color,
         srcTower: tower,
         life: 3,
@@ -909,6 +920,8 @@ const Game = {
         hitSet: null
       };
       this.state.projectiles.push(proj);
+      // Aim tower at last target (for visual rotation)
+      tower.angle = angle;
       this.playSound('shoot');
     }
 
@@ -955,6 +968,9 @@ const Game = {
       } else {
         p.x += (dx / d) * step;
         p.y += (dy / d) * step;
+        // Update spin + angle for visual
+        p.spin = (p.spin || 0) + dt * 14;
+        p.angle = Math.atan2(dy, dx);
       }
     }
 
@@ -1094,6 +1110,9 @@ const Game = {
     const last = this.path[this.path.length - 1];
     ctx.fillText('🏠', last.x, last.y);
 
+    // Time for sprite animations
+    const renderTime = performance.now() / 1000;
+
     // Hover placement preview
     if (this.selectedTowerType && this.hoverCell) {
       const { cx, cy } = this.hoverCell;
@@ -1110,9 +1129,8 @@ const Game = {
         ctx.fill();
         ctx.stroke();
         // Tower ghost
-        ctx.globalAlpha = 0.7;
-        ctx.font = '28px serif';
-        ctx.fillText(this.selectedTowerType.emoji, x, y);
+        ctx.globalAlpha = 0.65;
+        Sprites.drawTower(ctx, this.selectedTowerType.id, this.selectedTowerType, x, y, 36, renderTime, 0);
         ctx.globalAlpha = 1.0;
       }
     }
@@ -1143,32 +1161,14 @@ const Game = {
 
     // Towers
     for (const t of this.state.towers) {
-      // Base
-      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      // Tile base (subtle dark pad)
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
       ctx.beginPath();
-      ctx.arc(t.x, t.y + 14, 14, 0, Math.PI * 2);
+      ctx.ellipse(t.x, t.y + 16, 16, 5, 0, 0, Math.PI*2);
       ctx.fill();
-      ctx.fillStyle = t.def.color;
-      ctx.globalAlpha = 0.5;
-      ctx.beginPath();
-      ctx.arc(t.x, t.y, 18, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalAlpha = 1;
-      // Emoji
-      ctx.font = '28px serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(t.def.emoji, t.x, t.y);
-      // Upgrade dots
       const totalUp = Object.values(t.upgrades).reduce((a, b) => a + b, 0);
-      if (totalUp > 0) {
-        ctx.fillStyle = '#ffd700';
-        for (let i = 0; i < Math.min(totalUp, 6); i++) {
-          ctx.beginPath();
-          ctx.arc(t.x - 14 + i * 5, t.y - 18, 2, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
+      // Custom sprite
+      Sprites.drawTower(ctx, t.def.id, t.def, t.x, t.y, 38, renderTime, totalUp);
       // Lasagna aura visual
       if (t.def.aura) {
         ctx.fillStyle = 'rgba(214,48,49,0.05)';
@@ -1199,54 +1199,57 @@ const Game = {
       }
     }
 
-    // Projectiles
+    // Projectiles — custom canvas sprites
     for (const p of this.state.projectiles) {
-      ctx.fillStyle = p.color || '#fff';
-      ctx.font = '16px serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(p.symbol, p.x, p.y);
+      Sprites.drawProjectile(ctx, p);
     }
 
-    // Enemies
+    // Enemies — custom canvas sprites
     const nowS = performance.now() / 1000;
     for (const e of this.state.enemies) {
-      const sz = 26 * (e.scale || 1);
-      // Shadow
-      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      const sz = 36 * (e.scale || 1);
+      // Soft shadow under enemy
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
       ctx.beginPath();
-      ctx.ellipse(e.x, e.y + sz/3, sz/2.5, sz/6, 0, 0, Math.PI*2);
+      ctx.ellipse(e.x, e.y + sz/2 - 2, sz/2.2, sz/7, 0, 0, Math.PI*2);
       ctx.fill();
-      // Body
-      ctx.font = sz + 'px serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      if (nowS < e.flashUntil) {
-        ctx.fillStyle = '#fff';
-        ctx.fillRect(e.x - sz/2, e.y - sz/2, sz, sz);
+      // Flashing white tint when hit
+      const flashing = nowS < e.flashUntil;
+      Sprites.drawEnemy(ctx, e.type, e.def, e.x, e.y, sz, renderTime, { flash: flashing });
+      if (flashing) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.45;
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath(); ctx.arc(e.x, e.y, sz/2, 0, Math.PI*2); ctx.fill();
+        ctx.restore();
       }
-      ctx.fillStyle = '#000';
-      ctx.fillText(e.def.emoji, e.x, e.y);
       // HP Bar
-      const hpw = sz * 1.2;
+      const hpw = sz * 1.0;
       const hpr = e.hp / e.maxHp;
-      ctx.fillStyle = 'rgba(0,0,0,0.7)';
-      ctx.fillRect(e.x - hpw/2 - 1, e.y - sz/2 - 8, hpw + 2, 5);
+      ctx.fillStyle = 'rgba(0,0,0,0.75)';
+      ctx.fillRect(e.x - hpw/2 - 1, e.y - sz/2 - 10, hpw + 2, 5);
       ctx.fillStyle = hpr > 0.5 ? '#6ab04c' : (hpr > 0.25 ? '#f5d76e' : '#d63031');
-      ctx.fillRect(e.x - hpw/2, e.y - sz/2 - 7, hpw * hpr, 3);
+      ctx.fillRect(e.x - hpw/2, e.y - sz/2 - 9, hpw * hpr, 3);
       // Slow indicator
       if (e.slow) {
-        ctx.strokeStyle = '#9b59b6';
+        ctx.strokeStyle = '#74b9ff';
         ctx.lineWidth = 2;
+        ctx.setLineDash([3,3]);
         ctx.beginPath();
         ctx.arc(e.x, e.y, sz/2 + 4, 0, Math.PI * 2);
         ctx.stroke();
+        ctx.setLineDash([]);
       }
       // Boss label
       if (e.isBoss) {
         ctx.fillStyle = '#ff6b6b';
+        ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+        ctx.lineWidth = 3;
         ctx.font = 'bold 11px sans-serif';
-        ctx.fillText(e.def.name, e.x, e.y + sz/2 + 12);
+        ctx.textAlign = 'center';
+        ctx.strokeText(e.def.name, e.x, e.y + sz/2 + 14);
+        ctx.fillText(e.def.name, e.x, e.y + sz/2 + 14);
       }
     }
 

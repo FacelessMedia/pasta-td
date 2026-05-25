@@ -233,7 +233,8 @@ input:focus { border-color: var(--gold); }
 .tower-card.selected { background: rgba(255,215,0,0.25); border-color: var(--gold); box-shadow: 0 0 12px var(--gold); }
 .tower-card.locked { opacity: 0.5; cursor: not-allowed; }
 .tower-card.cant-afford { opacity: 0.6; }
-.tower-emoji { font-size: 28px; line-height: 1; }
+.tower-emoji { width: 48px; height: 48px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+.tower-emoji canvas { display: block; }
 .tower-meta { flex: 1; }
 .tower-meta .name { font-size: 12px; font-weight: bold; color: var(--cream); line-height: 1.2; }
 .tower-meta .cost { font-size: 11px; color: var(--gold); }
@@ -262,7 +263,8 @@ input:focus { border-color: var(--gold); }
 .upgrade-panel button:disabled { background: #555; cursor: not-allowed; opacity: 0.6; }
 
 .wave-preview { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px; background: rgba(0,0,0,0.3); border-radius: 6px; }
-.preview-enemy { font-size: 24px; position: relative; }
+.preview-enemy { position: relative; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; }
+.preview-enemy canvas { display: block; }
 .preview-enemy::after {
   content: attr(data-count);
   position: absolute;
@@ -707,15 +709,45 @@ input:focus { border-color: var(--gold); }
   border: 1px solid var(--gold);
 }
 
-/* ============ BESTIARY ============ */
+/* ============ PASTADEX ============ */
+.pastadex-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0 4px;
+  border-bottom: 2px solid var(--wood);
+  padding-bottom: 0;
+}
+.pdex-tab {
+  background: rgba(0,0,0,0.3);
+  border: 2px solid var(--wood);
+  border-bottom: none;
+  color: var(--cream);
+  font-size: 13px;
+  font-weight: bold;
+  padding: 8px 14px;
+  border-radius: 8px 8px 0 0;
+  cursor: pointer;
+  transition: all 0.15s;
+  position: relative;
+  top: 2px;
+}
+.pdex-tab:hover { background: rgba(255,215,0,0.15); border-color: var(--gold); }
+.pdex-tab.active { background: linear-gradient(180deg, rgba(255,215,0,0.25), rgba(0,0,0,0.3)); border-color: var(--gold); color: var(--gold); }
+.pdex-count { display: inline-block; margin-left: 6px; font-size: 11px; padding: 1px 6px; border-radius: 8px; background: rgba(0,0,0,0.4); color: var(--cream); }
+
+.pastadex-progress { margin: 10px 0 12px; }
+.pdex-bar { background: rgba(0,0,0,0.5); border: 1px solid var(--wood); border-radius: 999px; height: 14px; overflow: hidden; position: relative; }
+.pdex-bar-fill { height: 100%; background: linear-gradient(90deg, var(--basil), var(--gold)); transition: width 0.4s ease; box-shadow: 0 0 8px var(--gold); }
+.pdex-bar-label { text-align: center; margin-top: 4px; font-size: 11px; color: rgba(255,255,255,0.7); }
+
 .bestiary-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 10px;
-  margin-top: 12px;
+  margin-top: 6px;
 }
 .bestiary-card {
-  background: rgba(0,0,0,0.3);
+  background: linear-gradient(180deg, rgba(40,20,10,0.5), rgba(0,0,0,0.4));
   border: 2px solid var(--wood);
   border-radius: 10px;
   padding: 10px;
@@ -724,12 +756,27 @@ input:focus { border-color: var(--gold); }
   transition: all 0.15s;
 }
 .bestiary-card.boss { border-color: var(--tomato-2); box-shadow: 0 0 12px rgba(255,107,107,0.3); }
-.bestiary-card.undiscovered { opacity: 0.55; filter: grayscale(1); }
+.bestiary-card.tower { border-color: var(--gold); }
+.bestiary-card.undiscovered { opacity: 0.85; filter: none; background: linear-gradient(180deg, rgba(0,0,0,0.5), rgba(0,0,0,0.3)); border-color: rgba(255,255,255,0.15); border-style: dashed; }
+.bestiary-card.undiscovered .pdex-thumb { opacity: 1; }
+.bestiary-card .pdex-thumb {
+  width: 96px; height: 96px;
+  margin: 0 auto 6px;
+  display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(circle, rgba(255,215,0,0.08), rgba(0,0,0,0.0) 70%);
+  border-radius: 50%;
+  filter: drop-shadow(0 3px 6px rgba(0,0,0,0.45));
+}
+.bestiary-card .pdex-thumb canvas { display: block; }
+.bestiary-card .pdex-body { text-align: left; }
+.bestiary-card .pdex-body .tag-row { margin-bottom: 4px; }
 .bestiary-card .emoji { font-size: 48px; line-height: 1; }
-.bestiary-card .name { font-size: 13px; font-weight: bold; margin-top: 6px; color: var(--gold); }
-.bestiary-card .name.unknown { color: rgba(255,255,255,0.5); }
-.bestiary-card .stats { font-size: 11px; color: rgba(255,255,255,0.7); margin-top: 4px; line-height: 1.4; }
-.bestiary-card .lore { font-size: 10px; font-style: italic; color: rgba(255,255,255,0.55); margin-top: 6px; line-height: 1.3; }
+.bestiary-card .name { font-size: 13px; font-weight: bold; margin-top: 4px; color: var(--gold); text-align: center; }
+.bestiary-card .name.unknown { color: rgba(255,255,255,0.5); letter-spacing: 0.5px; }
+.bestiary-card .stats { font-size: 11px; color: rgba(255,255,255,0.85); margin-top: 4px; line-height: 1.5; }
+.bestiary-card .stats b { color: var(--gold); }
+.bestiary-card .lore { font-size: 10px; font-style: italic; color: rgba(245,215,110,0.7); margin-top: 6px; line-height: 1.35; border-top: 1px dotted rgba(255,255,255,0.15); padding-top: 6px; }
+.bestiary-card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,0.4); }
 .tag { display: inline-block; font-size: 9px; padding: 1px 6px; border-radius: 8px; background: var(--wood); margin: 1px; color: var(--cream); text-transform: uppercase; letter-spacing: 0.5px; }
 .tag.boss { background: var(--tomato); }
 .tag.fast { background: #9b59b6; }
@@ -793,12 +840,16 @@ input:focus { border-color: var(--gold); }
   margin: 10px 0;
 }
 .enemy-intro-emoji {
-  font-size: 80px;
-  line-height: 1;
-  text-align: center;
-  min-width: 100px;
+  width: 140px;
+  height: 140px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   animation: wiggle 0.6s ease-in-out infinite alternate;
+  filter: drop-shadow(0 4px 14px rgba(0,0,0,0.55));
 }
+.enemy-intro-emoji canvas { display: block; }
 @keyframes wiggle {
   from { transform: rotate(-8deg); }
   to { transform: rotate(8deg); }
