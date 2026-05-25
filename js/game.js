@@ -102,7 +102,10 @@ const Game = {
 
   newRun(firstStart, opts) {
     opts = opts || {};
-    this.state = makeRunState(this.save);
+    // Regenerate path for selected map before computing state
+    this.generatePath();
+    const mapDef = this.getCurrentMap();
+    this.state = makeRunState(this.save, mapDef);
     this.selectedTowerType = null;
     this.selectedTower = null;
     this.spawnQueue = [];
@@ -124,13 +127,15 @@ const Game = {
   },
 
   // ============ PATH GENERATION ============
+  getCurrentMap() {
+    const id = (this.save && this.save.selectedMap) || 'kitchen';
+    return MAPS.find(m => m.id === id) || MAPS[0];
+  },
   generatePath() {
-    // Hand-crafted path through the canvas grid: winding S-curve
     const cs = this.cellSize;
-    // Path waypoints (in cell coords). Canvas is 20 cols x 15 rows (800x600 / 40).
-    const pts = [
-      [0, 2], [4, 2], [4, 6], [10, 6], [10, 2], [14, 2], [14, 10], [6, 10], [6, 13], [16, 13], [16, 5], [19, 5], [19, 14]
-    ];
+    const map = this.getCurrentMap();
+    const pts = map.path;
+    this.currentMap = map;
     // Translate cell coords to pixel centers
     this.path = pts.map(([cx, cy]) => ({ x: cx * cs + cs / 2, y: cy * cs + cs / 2 }));
     // Build segments
@@ -142,6 +147,17 @@ const Game = {
       const len = Math.hypot(dx, dy);
       this.pathSegments.push({ x1: a.x, y1: a.y, x2: b.x, y2: b.y, len, dx: dx/len, dy: dy/len });
       this.pathTotalLen += len;
+    }
+  },
+  switchMap(mapId) {
+    if (this.save) {
+      this.save.selectedMap = mapId;
+      SaveSystem.save(this.save);
+    }
+    this.generatePath();
+    if (this.state) {
+      this.buildGrid = Array.from({ length: this.rows }, () => new Array(this.cols).fill(0));
+      this.markPathOnGrid();
     }
   },
   markPathOnGrid() {
@@ -280,8 +296,10 @@ const Game = {
       this.saveGame();
     }
     const scale = 1 + this.endlessWave * 0.25;
-    const hpScale = this.state.endlessMode ? scale * scale : 1;
-    const goldScale = this.state.endlessMode ? scale : 1;
+    const mapMods = (this.state && this.state.mods) || { enemyHp: 1, enemySpeed: 1, gold: 1 };
+    const hpScale = (this.state.endlessMode ? scale * scale : 1) * (mapMods.enemyHp || 1);
+    const goldScale = (this.state.endlessMode ? scale : 1) * (mapMods.gold || 1);
+    const speedScale = mapMods.enemySpeed || 1;
     const enemy = {
       type,
       def,
@@ -289,8 +307,8 @@ const Game = {
       y: this.path[0].y,
       hp: def.hp * hpScale,
       maxHp: def.hp * hpScale,
-      speed: def.speed * (1 + (Game.computeStat('enemySpeedMult', 0))),
-      baseSpeed: def.speed,
+      speed: def.speed * speedScale * (1 + (Game.computeStat('enemySpeedMult', 0))),
+      baseSpeed: def.speed * speedScale,
       progress: 0,
       pathDist: 0,
       segIdx: 0,
@@ -340,7 +358,8 @@ const Game = {
     gold *= 1 + (this.save.prestigePerks.globalGold || 0) * 0.05;
     gold = Math.floor(gold);
     this.state.gold += gold;
-    this.state.score += Math.floor(enemy.maxHp * 0.5);
+    const scoreMult = (this.state.mods && this.state.mods.score) || 1;
+    this.state.score += Math.floor(enemy.maxHp * 0.5 * scoreMult);
     if (srcTower) srcTower.kills = (srcTower.kills || 0) + 1;
     this.state.effects.push({ kind: 'pop', x: enemy.x, y: enemy.y, life: 0.5, color: enemy.def.color });
     this.state.effects.push({ kind: 'text', text: '+' + gold, x: enemy.x, y: enemy.y - 10, life: 0.7, vy: -30, color: '#ffd700' });
@@ -449,7 +468,8 @@ const Game = {
     } else {
       wave = WAVES[waveIdx];
     }
-    const waveBonus = Math.floor(wave.reward * this.computeStat('waveBonusMult', 1));
+    const mapMods = (this.state && this.state.mods) || { gold: 1, score: 1 };
+    const waveBonus = Math.floor(wave.reward * this.computeStat('waveBonusMult', 1) * (mapMods.gold || 1));
     this.state.gold += waveBonus;
     // Interest
     const interest = this.computeStat('interest', 0);
@@ -466,6 +486,12 @@ const Game = {
     }
     this.state.wave++;
     if (this.state.wave > this.save.highWave) this.save.highWave = this.state.wave;
+    // Per-map high wave tracking (used for unlocks)
+    const mapId = this.state.mapId || (this.save.selectedMap || 'kitchen');
+    if (!this.save.mapHighWaves) this.save.mapHighWaves = {};
+    if (this.state.wave > (this.save.mapHighWaves[mapId] || 0)) {
+      this.save.mapHighWaves[mapId] = this.state.wave;
+    }
 
     UI.toast(`Wave complete! +🪙${waveBonus} +🥫${marks}`);
     UI.setFooter('💰 Wave complete! Plan your next defense.');
@@ -856,8 +882,9 @@ const Game = {
   // ============ RENDER ============
   render() {
     const ctx = this.ctx;
-    // Background
-    ctx.fillStyle = '#4a3520';
+    // Background — map-specific
+    const map = this.currentMap || MAPS[0];
+    ctx.fillStyle = map.bgColor || '#4a3520';
     ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     // Grid (faint)
     ctx.strokeStyle = 'rgba(0,0,0,0.1)';
@@ -892,8 +919,8 @@ const Game = {
     ctx.moveTo(this.path[0].x, this.path[0].y);
     for (let i = 1; i < this.path.length; i++) ctx.lineTo(this.path[i].x, this.path[i].y);
     ctx.stroke();
-    // Inner path
-    ctx.strokeStyle = '#d4a574';
+    // Inner path — map-tinted
+    ctx.strokeStyle = map.color || '#d4a574';
     ctx.lineWidth = 30;
     ctx.beginPath();
     ctx.moveTo(this.path[0].x, this.path[0].y);
@@ -1110,9 +1137,10 @@ const Game = {
   // ============ SAVE ============
   saveGame(showToast) {
     if (!this.save) return;
-    // Persist meta state only (sauce, perks, etc); also persist current run for resume
-    const data = Object.assign({}, this.save, {
-      lastRun: {
+    // Don't write a "dead" lastRun (lives <= 0) so we don't auto-resume into game-over state
+    let lastRun = this.save.lastRun || null;
+    if (this.state && this.state.lives > 0) {
+      lastRun = {
         wave: this.state.wave,
         gold: this.state.gold,
         lives: this.state.lives,
@@ -1121,11 +1149,15 @@ const Game = {
         score: this.state.score,
         skillPoints: this.state.skillPoints,
         endlessMode: this.state.endlessMode,
-        towers: this.state.towers.map(t => ({
+        mapId: this.state.mapId,
+        towers: (this.state.towers || []).map(t => ({
           defId: t.def.id, x: t.x, y: t.y, upgrades: t.upgrades, kills: t.kills, totalSpent: t.totalSpent
         }))
-      }
-    });
+      };
+    } else if (this.state && this.state.lives <= 0) {
+      lastRun = null; // wipe on death
+    }
+    const data = Object.assign({}, this.save, { lastRun });
     const ok = SaveSystem.save(data);
     if (ok && showToast) UI.toast('💾 Saved!');
     this.save = data;
@@ -1204,6 +1236,9 @@ function resumeRunIfAvailable() {
   if (!Game.save.lastRun) return;
   const lr = Game.save.lastRun;
   if (typeof lr.wave !== 'number') return;
+  // If the saved run is from a different map, skip resume (path doesn't match)
+  const currentMapId = Game.save.selectedMap || 'kitchen';
+  if (lr.mapId && lr.mapId !== currentMapId) return;
   // Resume if there's any progress: wave, towers, skills, or extra marks
   const startMarks = (Game.save.prestigePerks && (Game.save.prestigePerks.startMarks || 0)) * 1;
   const hasProgress = lr.wave > 0

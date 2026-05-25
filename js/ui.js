@@ -30,6 +30,11 @@ const UI = {
       mnuPrestige: document.getElementById('mnuPrestige'),
       mnuLogout: document.getElementById('mnuLogout'),
 
+      // Map select
+      mapScreen: document.getElementById('mapScreen'),
+      mapGrid: document.getElementById('mapGrid'),
+      btnMapBack: document.getElementById('btnMapBack'),
+
       // Stats
       statLives: document.getElementById('statLives'),
       statGold: document.getElementById('statGold'),
@@ -108,7 +113,8 @@ const UI = {
     this.el.regPass.addEventListener('keydown', e => { if (e.key === 'Enter') this.doRegister(); });
 
     // Menu navigation
-    this.el.mnuPlay.addEventListener('click', () => this.enterGame());
+    this.el.mnuPlay.addEventListener('click', () => this.openMapSelect());
+    this.el.btnMapBack.addEventListener('click', () => this.goToMenu());
     this.el.mnuTutorial.addEventListener('click', () => this.openTutorial());
     this.el.mnuBestiary.addEventListener('click', () => this.openBestiary());
     this.el.mnuSkillTree.addEventListener('click', () => this.openSkillTree());
@@ -193,6 +199,7 @@ const UI = {
     SaveSystem.clearSession();
     this.el.gameScreen.classList.remove('visible');
     this.el.menuScreen.classList.remove('visible');
+    this.el.mapScreen.classList.remove('visible');
     this.el.loginScreen.classList.add('visible');
     Game.stop();
   },
@@ -214,6 +221,7 @@ const UI = {
     }
     this.el.loginScreen.classList.remove('visible');
     this.el.gameScreen.classList.remove('visible');
+    this.el.mapScreen.classList.remove('visible');
     this.el.menuScreen.classList.add('visible');
     const name = SaveSystem.currentUser === 'guest' ? 'Guest Chef' : SaveSystem.currentUser;
     this.el.menuUserLabel.textContent = name;
@@ -229,9 +237,12 @@ const UI = {
     const s = Game.save;
     const discovered = Object.keys(s.discoveredEnemies || {}).length;
     const total = Object.keys(ENEMIES).length;
+    const map = MAPS.find(m => m.id === (s.selectedMap || 'kitchen')) || MAPS[0];
+    const unlockedMaps = MAPS.filter(m => (s.highWave || 0) >= m.unlockHighWave).length;
     this.el.menuSummary.innerHTML = `
+      <div class="ms-item">🗺️ Map: <b>${map.emoji} ${map.name}</b> (${unlockedMaps}/${MAPS.length})</div>
       <div class="ms-item">🍅 Sauce: <b>${s.sauce}</b></div>
-      <div class="ms-item">✨ Prestige Lv: <b>${s.prestigeLevel}</b></div>
+      <div class="ms-item">✨ Prestige: <b>${s.prestigeLevel}</b></div>
       <div class="ms-item">🏆 Best Wave: <b>${s.highWave}</b></div>
       <div class="ms-item">📚 Bestiary: <b>${discovered}/${total}</b></div>
       <div class="ms-item">🔁 Runs: <b>${s.runsCompleted}</b></div>
@@ -241,16 +252,98 @@ const UI = {
   goToMenu() {
     if (Game.save) Game.saveGame();
     this.el.gameScreen.classList.remove('visible');
+    this.el.mapScreen.classList.remove('visible');
     this.el.menuScreen.classList.add('visible');
     this.renderMenuSummary();
   },
 
+  openMapSelect() {
+    this.el.menuScreen.classList.remove('visible');
+    this.el.gameScreen.classList.remove('visible');
+    this.el.mapScreen.classList.add('visible');
+    this.renderMaps();
+  },
+
+  renderMaps() {
+    this.el.mapGrid.innerHTML = '';
+    const highWave = Game.save.highWave || 0;
+    const mapHigh = Game.save.mapHighWaves || {};
+    const selected = Game.save.selectedMap || 'kitchen';
+    MAPS.forEach(map => {
+      const unlocked = highWave >= map.unlockHighWave;
+      const best = mapHigh[map.id] || 0;
+      const card = document.createElement('div');
+      card.className = 'map-card' + (unlocked ? '' : ' locked') + (selected === map.id ? ' selected' : '');
+
+      // Build path SVG preview
+      const svgPath = this.makeMapSvgPath(map.path);
+      const mods = map.mods;
+      const goldPct = Math.round((mods.gold - 1) * 100);
+      const livesDelta = mods.lives;
+      const hpPct = Math.round((mods.enemyHp - 1) * 100);
+      const speedPct = Math.round((mods.enemySpeed - 1) * 100);
+
+      const modPills = [];
+      if (goldPct > 0) modPills.push(`<span class="pos">+${goldPct}% 🪙</span>`);
+      if (mods.startGold > 0) modPills.push(`<span class="pos">+${mods.startGold} start🪙</span>`);
+      if (livesDelta < 0) modPills.push(`<span class="neg">${livesDelta} ❤️</span>`);
+      if (hpPct > 0) modPills.push(`<span class="neg">+${hpPct}% HP</span>`);
+      if (speedPct > 0) modPills.push(`<span class="neg">+${speedPct}% spd</span>`);
+
+      const stars = '★'.repeat(map.diffStars) + '☆'.repeat(5 - map.diffStars);
+
+      card.innerHTML = `
+        <div class="map-preview" style="background:${map.bgColor}">
+          <div class="map-emoji">${map.emoji}</div>
+          <svg class="map-svg" viewBox="0 0 20 15" preserveAspectRatio="none">
+            <path d="${svgPath}" stroke="${map.color}" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/>
+            <circle cx="${map.path[0][0]}" cy="${map.path[0][1]}" r="0.5" fill="#6ab04c"/>
+            <circle cx="${map.path[map.path.length-1][0]}" cy="${map.path[map.path.length-1][1]}" r="0.5" fill="#d63031"/>
+          </svg>
+        </div>
+        ${!unlocked ? `<div class="lock-badge">🔒 Wave ${map.unlockHighWave}</div>` : (best > 0 ? `<div class="best-wave-badge">🏆 W${best}</div>` : '')}
+        <div class="map-name">${map.emoji} ${map.name}</div>
+        <div class="map-diff"><span class="stars">${stars}</span> ${map.difficulty}</div>
+        <div class="map-desc">${map.desc}</div>
+        <div class="map-stats">${modPills.join('')}</div>
+      `;
+      if (unlocked) {
+        card.addEventListener('click', () => this.selectMapAndPlay(map.id));
+      }
+      this.el.mapGrid.appendChild(card);
+    });
+  },
+
+  makeMapSvgPath(pts) {
+    if (!pts || pts.length === 0) return '';
+    let d = `M ${pts[0][0] + 0.5} ${pts[0][1] + 0.5}`;
+    for (let i = 1; i < pts.length; i++) d += ` L ${pts[i][0] + 0.5} ${pts[i][1] + 0.5}`;
+    return d;
+  },
+
+  selectMapAndPlay(mapId) {
+    if (!Game.save) return;
+    // Switching maps wipes lastRun (path geometry changes)
+    if (Game.save.selectedMap !== mapId) {
+      Game.save.selectedMap = mapId;
+      Game.save.lastRun = null;
+      Game.state = null;
+      SaveSystem.save(Game.save);
+    }
+    this.enterGame();
+  },
+
   enterGame() {
     this.el.menuScreen.classList.remove('visible');
+    this.el.mapScreen.classList.remove('visible');
     this.el.loginScreen.classList.remove('visible');
     this.el.gameScreen.classList.add('visible');
     const name = SaveSystem.currentUser === 'guest' ? '👤 Guest' : '🧑‍🍳 ' + SaveSystem.currentUser;
     this.el.userLabel.textContent = name;
+    // Update brand to show current map
+    const map = MAPS.find(m => m.id === (Game.save.selectedMap || 'kitchen')) || MAPS[0];
+    const brand = document.querySelector('#gameScreen .brand');
+    if (brand) brand.innerHTML = `${map.emoji} <span style="font-size:11px;opacity:0.85">${map.name}</span>`;
     Game.start();
   },
 

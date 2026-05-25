@@ -2,6 +2,77 @@
 // THEME: Pasta has invaded your kitchen! Defend with kitchen tools.
 // Towers = kitchen utensils; Enemies = sentient pasta dishes.
 
+// ============== MAPS ==============
+// Path waypoints in cell coords. Canvas is 20 cols x 15 rows (800x600 / 40).
+// Each map has difficulty, gold/score modifiers, and unlock requirements.
+const MAPS = [
+  {
+    id: 'kitchen',
+    name: 'The Kitchen',
+    emoji: '🍳',
+    difficulty: 'Easy',
+    diffStars: 1,
+    desc: 'A spacious counter with one gentle curve. Perfect for first-time chefs.',
+    color: '#d4a574',
+    bgColor: '#3d2418',
+    path: [[0, 7], [6, 7], [6, 3], [14, 3], [14, 11], [19, 11]],
+    unlockHighWave: 0,
+    mods: { gold: 1.0, score: 1.0, lives: 0, enemyHp: 1.0, enemySpeed: 1.0, startGold: 0 }
+  },
+  {
+    id: 'pizzeria',
+    name: 'Pizzeria Patio',
+    emoji: '🍕',
+    difficulty: 'Medium',
+    diffStars: 2,
+    desc: 'A pizza joint with checkerboard tiles. Tighter corners, +15% gold.',
+    color: '#e74c3c',
+    bgColor: '#4a1a1a',
+    path: [[0, 2], [5, 2], [5, 6], [10, 6], [10, 2], [15, 2], [15, 10], [4, 10], [4, 13], [19, 13]],
+    unlockHighWave: 5,
+    mods: { gold: 1.15, score: 1.2, lives: 0, enemyHp: 1.0, enemySpeed: 1.0, startGold: 0 }
+  },
+  {
+    id: 'garden',
+    name: 'Herb Garden',
+    emoji: '🌿',
+    difficulty: 'Hard',
+    diffStars: 3,
+    desc: 'A winding garden path. Long route — pasta has plenty of time to charge. -5 starting lives, +30% gold.',
+    color: '#27ae60',
+    bgColor: '#1a3d1a',
+    path: [[0, 1], [3, 1], [3, 5], [7, 5], [7, 1], [11, 1], [11, 8], [3, 8], [3, 13], [12, 13], [12, 11], [16, 11], [16, 5], [19, 5]],
+    unlockHighWave: 12,
+    mods: { gold: 1.3, score: 1.5, lives: -5, enemyHp: 1.0, enemySpeed: 1.0, startGold: 50 }
+  },
+  {
+    id: 'factory',
+    name: 'Pasta Factory',
+    emoji: '🏭',
+    difficulty: 'Expert',
+    diffStars: 4,
+    desc: 'Pasta production line! Long S-curve, tougher enemies, +50% gold.',
+    color: '#7f8c8d',
+    bgColor: '#1a2a2e',
+    path: [[0, 13], [4, 13], [4, 2], [9, 2], [9, 13], [14, 13], [14, 2], [19, 2]],
+    unlockHighWave: 20,
+    mods: { gold: 1.5, score: 2.0, lives: -8, enemyHp: 1.15, enemySpeed: 1.05, startGold: 100 }
+  },
+  {
+    id: 'trattoria',
+    name: 'The Trattoria',
+    emoji: '🍝',
+    difficulty: 'Master',
+    diffStars: 5,
+    desc: 'The infamous boss maze. Brutal turns, fast enemies, +75% gold for the brave.',
+    color: '#c0392b',
+    bgColor: '#2a1010',
+    path: [[0, 2], [4, 2], [4, 6], [10, 6], [10, 2], [14, 2], [14, 10], [6, 10], [6, 13], [16, 13], [16, 5], [19, 5], [19, 14]],
+    unlockHighWave: 28,
+    mods: { gold: 1.75, score: 3.0, lives: -10, enemyHp: 1.25, enemySpeed: 1.15, startGold: 150 }
+  }
+];
+
 const TOWERS = [
   {
     id: 'spaghetti', // keeping old id for save compat
@@ -9,18 +80,18 @@ const TOWERS = [
     emoji: '🔪',
     desc: 'Long-range single-target. The kitchen\'s most reliable defender.',
     lore: 'A trained set of cutlery, each blade sworn to protect the pantry. Especially effective against soft pasta.',
-    cost: 70,
-    damage: 22,
+    cost: 60,
+    damage: 24,
     range: 220,
-    fireRate: 1.2,
+    fireRate: 1.3,
     projectileSpeed: 650,
     projectile: '🗡',
     color: '#dfe6e9',
     unlockWave: 1,
     upgrades: {
-      damage: { increment: 16, cost: 55, max: 5 },
+      damage: { increment: 18, cost: 50, max: 5 },
       range: { increment: 30, cost: 50, max: 4 },
-      fireRate: { increment: 0.4, cost: 70, max: 4 }
+      fireRate: { increment: 0.4, cost: 65, max: 4 }
     },
     taunts: [
       "Time to dice you, pasta!",
@@ -36,12 +107,12 @@ const TOWERS = [
     emoji: '🥄',
     desc: 'Bonks pasta with splash damage. Grandma\'s favorite weapon.',
     lore: 'Wielded by generations of Italian grandmothers. Each whack is a love letter — a violent one.',
-    cost: 110,
-    damage: 14,
-    range: 130,
-    fireRate: 1.0,
+    cost: 95,
+    damage: 16,
+    range: 140,
+    fireRate: 1.1,
     projectileSpeed: 380,
-    splash: 50,
+    splash: 55,
     projectile: '💢',
     color: '#cd853f',
     unlockWave: 2,
@@ -64,10 +135,10 @@ const TOWERS = [
     emoji: '🌀',
     desc: 'Spins furiously, beating pasta to death. Extremely fast attacks.',
     lore: 'A possessed wire whisk that found a taste for vengeance after one too many lumpy gravies.',
-    cost: 95,
-    damage: 7,
-    range: 140,
-    fireRate: 4.2,
+    cost: 85,
+    damage: 8,
+    range: 145,
+    fireRate: 4.5,
     projectileSpeed: 520,
     projectile: '✦',
     color: '#74b9ff',
@@ -119,12 +190,12 @@ const TOWERS = [
     emoji: '🧂',
     desc: 'Sprinkles salt — slows enemies in their tracks.',
     lore: 'It dehydrates pasta on contact. Cruel, but effective.',
-    cost: 100,
-    damage: 4,
-    range: 160,
-    fireRate: 1.6,
+    cost: 90,
+    damage: 5,
+    range: 170,
+    fireRate: 1.8,
     projectileSpeed: 480,
-    slow: { factor: 0.5, duration: 2.0 },
+    slow: { factor: 0.5, duration: 2.2 },
     projectile: '⋅',
     color: '#dfe6e9',
     unlockWave: 4,
@@ -333,17 +404,17 @@ const ENEMIES = {
 function generateWaves() {
   const waves = [];
   // 1-3: tutorial — only meatballs, easy
-  waves.push({ enemies: [{ type: 'meatball', count: 6, spacing: 0.85 }], reward: 35 });
-  waves.push({ enemies: [{ type: 'meatball', count: 10, spacing: 0.7 }], reward: 40 });
-  waves.push({ enemies: [{ type: 'meatball', count: 8, spacing: 0.55 }, { type: 'pepperoni', count: 4, spacing: 0.55 }], reward: 50 });
+  waves.push({ enemies: [{ type: 'meatball', count: 6, spacing: 0.85 }], reward: 50 });
+  waves.push({ enemies: [{ type: 'meatball', count: 10, spacing: 0.7 }], reward: 60 });
+  waves.push({ enemies: [{ type: 'meatball', count: 8, spacing: 0.55 }, { type: 'pepperoni', count: 4, spacing: 0.55 }], reward: 70 });
   // 4-6: introduce variety
-  waves.push({ enemies: [{ type: 'tomato', count: 6, spacing: 0.7 }, { type: 'pepperoni', count: 6, spacing: 0.45 }], reward: 60 });
-  waves.push({ enemies: [{ type: 'garlic', count: 10, spacing: 0.5 }, { type: 'tomato', count: 5, spacing: 0.7 }], reward: 70 });
-  waves.push({ enemies: [{ type: 'pepperoni', count: 14, spacing: 0.38 }], reward: 80 });
+  waves.push({ enemies: [{ type: 'tomato', count: 6, spacing: 0.7 }, { type: 'pepperoni', count: 6, spacing: 0.45 }], reward: 85 });
+  waves.push({ enemies: [{ type: 'garlic', count: 10, spacing: 0.5 }, { type: 'tomato', count: 5, spacing: 0.7 }], reward: 100 });
+  waves.push({ enemies: [{ type: 'pepperoni', count: 14, spacing: 0.38 }], reward: 115 });
   // 7-9: heat up
-  waves.push({ enemies: [{ type: 'tomato', count: 8, spacing: 0.6 }, { type: 'garlic', count: 10, spacing: 0.45 }], reward: 95 });
-  waves.push({ enemies: [{ type: 'olive', count: 7, spacing: 0.85 }, { type: 'pepperoni', count: 10, spacing: 0.4 }], reward: 110 });
-  waves.push({ enemies: [{ type: 'basil', count: 7, spacing: 0.85 }, { type: 'anchovy', count: 6, spacing: 0.5 }], reward: 125 });
+  waves.push({ enemies: [{ type: 'tomato', count: 8, spacing: 0.6 }, { type: 'garlic', count: 10, spacing: 0.45 }], reward: 135 });
+  waves.push({ enemies: [{ type: 'olive', count: 7, spacing: 0.85 }, { type: 'pepperoni', count: 10, spacing: 0.4 }], reward: 155 });
+  waves.push({ enemies: [{ type: 'basil', count: 7, spacing: 0.85 }, { type: 'anchovy', count: 6, spacing: 0.5 }], reward: 175 });
   // 10: BOSS WAVE
   waves.push({ enemies: [{ type: 'cheeseWheel', count: 1, spacing: 1 }, { type: 'meatball', count: 15, spacing: 0.4 }], reward: 250, boss: true });
   // 11-15: ramping
@@ -432,7 +503,7 @@ const PRESTIGE_PERKS = [
 // ============== SAVE FACTORY ==============
 function makeDefaultSave() {
   return {
-    version: 2,
+    version: 3,
     username: null,
     sauce: 0,
     prestigeLevel: 0,
@@ -441,15 +512,18 @@ function makeDefaultSave() {
     runsCompleted: 0,
     highWave: 0,
     discoveredEnemies: {},  // {enemyId: true}  — bestiary tracking
+    selectedMap: 'kitchen',
+    mapHighWaves: {},       // {mapId: highestWave}
     tutorialSeen: false,
     settings: { taunts: true, sfx: true }
   };
 }
 
-function makeRunState(saveData) {
+function makeRunState(saveData, mapDef) {
   const perks = saveData.prestigePerks || {};
-  const startGold = 200 + (perks.startGold || 0) * 50;
-  const startLives = 20 + (perks.startLives || 0) * 2;
+  const mods = (mapDef && mapDef.mods) || { gold: 1, score: 1, lives: 0, enemyHp: 1, enemySpeed: 1, startGold: 0 };
+  const startGold = 200 + (perks.startGold || 0) * 50 + (mods.startGold || 0);
+  const startLives = Math.max(5, 20 + (perks.startLives || 0) * 2 + (mods.lives || 0));
   const startMarks = (perks.startMarks || 0) * 1;
   return {
     gold: startGold,
@@ -465,6 +539,8 @@ function makeRunState(saveData) {
     projectiles: [],
     effects: [],
     taunts: [],
-    endlessMode: false
+    endlessMode: false,
+    mapId: (mapDef && mapDef.id) || saveData.selectedMap || 'kitchen',
+    mods: mods
   };
 }

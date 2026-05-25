@@ -468,6 +468,128 @@ input:focus { border-color: var(--gold); }
 .menu-btn .lbl { font-weight: bold; font-size: 16px; }
 .menu-btn .sub { font-size: 11px; color: rgba(255,255,255,0.6); }
 
+/* ============ MAP SELECT ============ */
+#mapScreen {
+  align-items: center;
+  justify-content: flex-start;
+  padding: 20px;
+  overflow-y: auto;
+  background:
+    radial-gradient(circle at 20% 30%, rgba(214,48,49,0.15) 0%, transparent 60%),
+    radial-gradient(circle at 80% 70%, rgba(255,215,0,0.1) 0%, transparent 60%),
+    linear-gradient(135deg, #2a1810 0%, #4a2a1a 100%);
+}
+.map-box {
+  background: linear-gradient(180deg, #5a3520 0%, #3d2418 100%);
+  border: 3px solid var(--wood-2);
+  border-radius: 20px;
+  padding: 28px 32px;
+  max-width: 1200px;
+  width: 100%;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+}
+.map-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.map-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-top: 18px;
+}
+.map-card {
+  background: linear-gradient(180deg, #5a3520 0%, #3d2418 100%);
+  border: 2px solid var(--wood-2);
+  border-radius: 14px;
+  padding: 14px;
+  cursor: pointer;
+  transition: all 0.15s;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 4px 0 #2a1810, 0 6px 12px rgba(0,0,0,0.3);
+}
+.map-card:hover:not(.locked) { transform: translateY(-3px); border-color: var(--gold); }
+.map-card:active:not(.locked) { transform: translateY(1px); }
+.map-card.locked { opacity: 0.55; cursor: not-allowed; filter: grayscale(0.7); }
+.map-card.selected { border-color: var(--gold); box-shadow: 0 0 16px rgba(255,215,0,0.5), 0 4px 0 #2a1810; }
+
+.map-card .map-preview {
+  background: var(--wood-2);
+  border-radius: 8px;
+  height: 110px;
+  margin-bottom: 10px;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.map-card .map-emoji {
+  font-size: 60px;
+  opacity: 0.4;
+  position: absolute;
+}
+.map-card .map-svg {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  top: 0; left: 0;
+}
+.map-card .map-name {
+  font-size: 17px;
+  font-weight: bold;
+  color: var(--gold);
+  margin-bottom: 4px;
+}
+.map-card .map-diff {
+  font-size: 11px;
+  color: var(--cream);
+  margin-bottom: 6px;
+}
+.map-card .map-diff .stars { color: var(--gold); }
+.map-card .map-desc {
+  font-size: 11px;
+  line-height: 1.4;
+  color: rgba(255,255,255,0.75);
+  margin-bottom: 8px;
+}
+.map-card .map-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 10px;
+  margin-top: 4px;
+}
+.map-card .map-stats span {
+  background: rgba(0,0,0,0.4);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.map-card .map-stats .pos { color: #6ab04c; }
+.map-card .map-stats .neg { color: #ff6b6b; }
+.map-card .lock-badge {
+  position: absolute;
+  top: 8px; right: 8px;
+  background: rgba(0,0,0,0.7);
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  color: #ff6b6b;
+}
+.map-card .best-wave-badge {
+  position: absolute;
+  top: 8px; right: 8px;
+  background: rgba(255,215,0,0.2);
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  color: var(--gold);
+  border: 1px solid var(--gold);
+}
+
 /* ============ BESTIARY ============ */
 .bestiary-grid {
   display: grid;
