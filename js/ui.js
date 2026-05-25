@@ -79,6 +79,12 @@ const UI = {
       enemyIntroModal: document.getElementById('enemyIntroModal'),
       enemyIntroBody: document.getElementById('enemyIntroBody'),
       btnEnemyIntroOK: document.getElementById('btnEnemyIntroOK'),
+      // EPIC: heroes / boons / powers
+      heroSelectModal: document.getElementById('heroSelectModal'),
+      heroSelectGrid: document.getElementById('heroSelectGrid'),
+      boonModal: document.getElementById('boonModal'),
+      boonChoices: document.getElementById('boonChoices'),
+      powersBar: document.getElementById('powersBar'),
 
       gameOverModal: document.getElementById('gameOverModal'),
       gameOverTitle: document.getElementById('gameOverTitle'),
@@ -418,15 +424,57 @@ const UI = {
     this.el.towerInfo.style.display = 'none';
     this.el.upgradePanel.style.display = 'block';
     const t = tower.def;
+    const isHero = !!tower.isHero;
+    // XP bar for heroes
+    const xpBar = isHero ? `
+      <div class="hero-xp-bar"><div class="hero-xp-fill" style="width:${Math.min(100, (tower.xp / tower.xpNext) * 100)}%"></div></div>
+      <div class="stat-row hero-lvl"><span>⭐ Hero Lv</span><b>${tower.level} <small>(${tower.xp}/${tower.xpNext} XP)</small></b></div>
+    ` : '';
     let html = `
-      <div class="name">${t.emoji} ${t.name}</div>
+      <div class="name">${t.emoji} ${t.name}${isHero ? ' <span class="hero-badge">HERO</span>' : ''}</div>
+      ${xpBar}
       <div class="stat-row"><span>💥 Damage</span><b>${tower.getDamage().toFixed(1)}</b></div>
       <div class="stat-row"><span>🎯 Range</span><b>${tower.getRange().toFixed(0)}</b></div>
       <div class="stat-row"><span>⚡ Rate</span><b>${tower.getFireRate().toFixed(2)}/s</b></div>
       ${t.splash ? `<div class="stat-row"><span>💢 Splash</span><b>${tower.getSplash().toFixed(0)}</b></div>` : ''}
       <div class="stat-row"><span>💀 Kills</span><b>${tower.kills}</b></div>
     `;
-    Object.entries(t.upgrades || {}).forEach(([key, up]) => {
+    // Targeting modes (skip for pure aura/beam towers)
+    if (!t.aura) {
+      const modes = [
+        { id: 'first',  label: 'First',  desc: 'Furthest along path' },
+        { id: 'last',   label: 'Last',   desc: 'Newest spawn' },
+        { id: 'strong', label: 'Strong', desc: 'Highest HP' },
+        { id: 'weak',   label: 'Weak',   desc: 'Lowest HP' },
+        { id: 'close',  label: 'Close',  desc: 'Nearest tower' },
+      ];
+      const cur = tower.targetMode || 'first';
+      html += `<div class="target-modes"><div class="tm-label">🎯 Target Priority</div><div class="tm-row">`;
+      modes.forEach(m => {
+        html += `<button class="tm-btn${cur === m.id ? ' active' : ''}" data-tmode="${m.id}" title="${m.desc}">${m.label}</button>`;
+      });
+      html += `</div></div>`;
+    }
+    // Hero ability button
+    if (isHero && tower.ability) {
+      const cdLeft = Math.max(0, (tower.abilityReadyAt || 0) - performance.now() / 1000);
+      const ready = cdLeft <= 0;
+      const lvlReq = tower.ability.unlockLevel || 1;
+      const locked = tower.level < lvlReq;
+      html += `
+        <div class="hero-ability">
+          <button class="ability-btn${ready && !locked ? ' ready' : ''}" data-ability="1" ${ready && !locked ? '' : 'disabled'}>
+            <span class="ab-icon">${tower.ability.icon}</span>
+            <span class="ab-name">${tower.ability.name}</span>
+            <span class="ab-cd">${locked ? `🔒 Lv${lvlReq}` : (ready ? 'READY!' : cdLeft.toFixed(1) + 's')}</span>
+          </button>
+          <div class="ab-desc">${tower.ability.desc}</div>
+        </div>
+      `;
+    }
+    // Heroes don't use gold-based upgrades — they level via XP
+    const upgradesObj = isHero ? {} : (t.upgrades || {});
+    Object.entries(upgradesObj).forEach(([key, up]) => {
       const lvl = tower.upgrades[key] || 0;
       const maxed = lvl >= up.max;
       const cost = Math.floor(up.cost * Math.pow(1.5, lvl));
@@ -442,15 +490,26 @@ const UI = {
       }[key] || key;
       html += `<button data-upgrade="${key}" ${maxed || !canAfford ? 'disabled' : ''}>${upgradeName} ${maxed ? '(MAX)' : `Lv${lvl}/${up.max} — 🪙${cost}`}</button>`;
     });
-    const sellValue = Math.floor(tower.totalSpent * 0.7);
-    html += `<button class="sell" data-sell="1">Sell — 🪙${sellValue}</button>`;
+    // Heroes can't be sold (only 1 per run)
+    if (!isHero) {
+      const sellValue = Math.floor(tower.totalSpent * 0.7);
+      html += `<button class="sell" data-sell="1">Sell — 🪙${sellValue}</button>`;
+    }
     this.el.upgradePanel.innerHTML = html;
 
-    Object.keys(t.upgrades || {}).forEach(key => {
+    Object.keys(upgradesObj).forEach(key => {
       const btn = this.el.upgradePanel.querySelector(`[data-upgrade="${key}"]`);
       if (btn) btn.addEventListener('click', () => Game.upgradeTower(tower, key));
     });
-    this.el.upgradePanel.querySelector('[data-sell]').addEventListener('click', () => Game.sellTower(tower));
+    const sellBtn = this.el.upgradePanel.querySelector('[data-sell]');
+    if (sellBtn) sellBtn.addEventListener('click', () => Game.sellTower(tower));
+    // Targeting mode buttons
+    this.el.upgradePanel.querySelectorAll('[data-tmode]').forEach(btn => {
+      btn.addEventListener('click', () => Game.setTargetMode(tower, btn.dataset.tmode));
+    });
+    // Hero ability
+    const abBtn = this.el.upgradePanel.querySelector('[data-ability]');
+    if (abBtn) abBtn.addEventListener('click', () => Game.triggerHeroAbility(tower));
   },
 
   hideUpgradePanel() {
@@ -927,6 +986,99 @@ const UI = {
     }
     Game.paused = false;
     this.el.btnPause.textContent = '⏸';
+  },
+
+  // ===== HERO SELECT =====
+  showHeroSelect() {
+    if (!this.el.heroSelectGrid) return;
+    this.el.heroSelectGrid.innerHTML = '';
+    HEROES.forEach(hero => {
+      const card = document.createElement('div');
+      card.className = 'hero-card';
+      card.style.borderColor = hero.color;
+      card.innerHTML = `
+        <div class="hero-emoji" style="background: radial-gradient(circle at 35% 30%, ${hero.color}cc 0%, ${hero.color}33 100%)">${hero.emoji}</div>
+        <div class="hero-name" style="color:${hero.color}">${hero.name}</div>
+        <div class="hero-title">${hero.title}</div>
+        <div class="hero-desc">${hero.desc}</div>
+        <div class="hero-stats">
+          <span>💥 ${hero.damage}</span>
+          <span>🎯 ${hero.range}</span>
+          <span>⚡ ${hero.fireRate}/s</span>
+        </div>
+        <div class="hero-ability-preview">
+          <b>${hero.ability.icon} ${hero.ability.name}</b>
+          <small>(Lv ${hero.ability.unlockLevel}+, ${hero.ability.cooldown}s CD)</small>
+          <div>${hero.ability.desc}</div>
+        </div>
+        <div class="hero-flavor">${hero.flavor}</div>
+        <button class="big-btn hero-pick-btn" data-hero="${hero.id}">⭐ Pick ${hero.name.split(' ')[0]}</button>
+      `;
+      card.querySelector('[data-hero]').addEventListener('click', () => {
+        this.el.heroSelectModal.classList.remove('visible');
+        Game.selectHero(hero.id);
+      });
+      this.el.heroSelectGrid.appendChild(card);
+    });
+    this.el.heroSelectModal.classList.add('visible');
+  },
+
+  // ===== BOON CHOICE =====
+  showBoonChoice(choices) {
+    if (!this.el.boonChoices) return;
+    this.el.boonChoices.innerHTML = '';
+    choices.forEach(boon => {
+      const card = document.createElement('div');
+      card.className = `boon-card tier-${boon.tier}`;
+      card.innerHTML = `
+        <div class="boon-tier">${boon.tier.toUpperCase()}</div>
+        <div class="boon-icon">${boon.icon}</div>
+        <div class="boon-name">${boon.name}</div>
+        <div class="boon-desc">${boon.desc}</div>
+        <button class="big-btn boon-pick-btn" data-boon="${boon.id}">Take</button>
+      `;
+      card.querySelector('[data-boon]').addEventListener('click', () => Game.pickBoon(boon.id));
+      this.el.boonChoices.appendChild(card);
+    });
+    // Also add a "skip" option (small)
+    const skip = document.createElement('button');
+    skip.className = 'boon-skip-btn';
+    skip.textContent = 'Skip (no boon)';
+    skip.addEventListener('click', () => {
+      Game.state.pendingBoonWave = 0;
+      this.closeBoonModal();
+    });
+    this.el.boonChoices.appendChild(skip);
+    this.el.boonModal.classList.add('visible');
+  },
+  closeBoonModal() {
+    if (this.el.boonModal) this.el.boonModal.classList.remove('visible');
+  },
+
+  // ===== POWERS BAR =====
+  renderPowersBar() {
+    if (!this.el.powersBar || !Game.state) return;
+    const now = performance.now() / 1000;
+    this.el.powersBar.innerHTML = '';
+    POWERS.forEach(p => {
+      const cdReadyAt = (Game.state.powerCooldowns || {})[p.id] || 0;
+      const cdLeft = Math.max(0, cdReadyAt - now);
+      const ready = cdLeft <= 0;
+      const canAfford = Game.state.gold >= p.cost;
+      const pending = Game.state.pendingPowerTarget === p.id;
+      const btn = document.createElement('button');
+      btn.className = `power-btn${ready ? ' ready' : ''}${!canAfford ? ' poor' : ''}${pending ? ' pending' : ''}`;
+      btn.title = `${p.name} — ${p.desc}`;
+      btn.innerHTML = `
+        <span class="pw-icon">${p.icon}</span>
+        <span class="pw-cost">${p.cost > 0 ? `🪙${p.cost}` : 'FREE'}</span>
+        <span class="pw-cd">${ready ? 'READY' : cdLeft.toFixed(0) + 's'}</span>
+        <span class="pw-name">${p.name}</span>
+      `;
+      btn.disabled = !(ready && canAfford);
+      btn.addEventListener('click', () => Game.selectPower(p.id));
+      this.el.powersBar.appendChild(btn);
+    });
   },
 
   // ===== END GAME =====

@@ -139,6 +139,7 @@
       <div class="canvas-controls">
         <button class="big-btn" id="btnStartWave">▶ Start Wave</button>
       </div>
+      <div id="powersBar" class="powers-bar"></div>
     </div>
 
     <aside class="sidebar right">
@@ -293,6 +294,28 @@
     <div id="victoryStats"></div>
     <button class="big-btn" id="btnVictoryPrestige">✨ Prestige for Bonuses</button>
     <button class="big-btn" id="btnVictoryEndless">♾️ Endless Mode</button>
+  </div>
+</div>
+
+<!-- HERO SELECT MODAL -->
+<div id="heroSelectModal" class="modal">
+  <div class="modal-content wide hero-select-modal">
+    <div class="modal-header">
+      <h2>⭐ Choose Your Hero</h2>
+    </div>
+    <p class="hero-intro">Each run, pick ONE hero to lead your kitchen. They level up from kills, grant unique passives, and have a powerful active ability.</p>
+    <div id="heroSelectGrid" class="hero-select-grid"></div>
+  </div>
+</div>
+
+<!-- BOON CHOICE MODAL -->
+<div id="boonModal" class="modal">
+  <div class="modal-content wide boon-modal">
+    <div class="modal-header">
+      <h2>✨ Choose a Boon</h2>
+    </div>
+    <p class="boon-intro">Every 5 waves, the kitchen gods grant a blessing. <b>Pick wisely</b> — boons last the rest of the run.</p>
+    <div id="boonChoices" class="boon-choices"></div>
   </div>
 </div>
 

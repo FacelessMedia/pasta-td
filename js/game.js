@@ -141,10 +141,15 @@ const Game = {
     UI.renderTowerShop();
     UI.renderWavePreview();
     UI.updateStats(this.state);
+    UI.renderPowersBar();
     UI.setFooter('Pick a kitchen tool and place it. Hit Start Wave when ready!');
     if (firstStart) UI.banner('Get cooking! 🍝', 1500);
     UI.el.btnStartWave.disabled = false;
     UI.el.btnStartWave.textContent = '▶ Start Wave 1';
+    // EPIC: Show hero select on fresh runs (unless a hero is already chosen)
+    if (firstStart && !this.state.heroId) {
+      setTimeout(() => UI.showHeroSelect(), 250);
+    }
   },
 
   // ============ PATH GENERATION ============
@@ -218,6 +223,7 @@ const Game = {
       totalSpent: Math.floor(def.cost * Game.computeStat('costMult', 1)),
       target: null,
       laserTarget: null, // for linguine
+      targetMode: 'first', // first | last | strong | close | weak
       getDamage() {
         const base = this.def.damage + (this.upgrades.damage || 0) * (this.def.upgrades.damage?.increment || 0);
         const auraBoost = Game.computeAuraBoost(this);
@@ -304,6 +310,14 @@ const Game = {
     UI.renderTowerShop();
   },
 
+  setTargetMode(tower, mode) {
+    const modes = ['first', 'last', 'strong', 'weak', 'close'];
+    if (!modes.includes(mode)) return;
+    tower.targetMode = mode;
+    UI.showUpgradePanel(tower);
+    this.playSound('upgrade');
+  },
+
   sellTower(tower) {
     // Base 70% + prestige sellRefund 5% per level + skill sellFull
     let pct = 0.7 + (this.save.prestigePerks.sellRefund || 0) * 0.05;
@@ -323,6 +337,313 @@ const Game = {
     UI.renderTowerShop();
     this.playSound('sell');
     UI.toast('💰 Sold for ' + refund + ' gold');
+  },
+
+  // ============ HEROES ============
+  makeHero(heroDef, x, y) {
+    const hero = {
+      def: { // Minimal "def" shape compatible with renderer/upgrade panel
+        id: heroDef.id,
+        name: heroDef.name,
+        emoji: heroDef.emoji,
+        desc: heroDef.desc,
+        color: heroDef.color,
+        cost: 0,
+        damage: heroDef.damage,
+        range: heroDef.range,
+        fireRate: heroDef.fireRate,
+        projectileSpeed: heroDef.projectileSpeed,
+        projectile: heroDef.projectile || '•',
+        projKind: heroDef.projKind || '_default',
+        splash: heroDef.splash || 0,
+        upgrades: {},
+        taunts: [],
+      },
+      x, y,
+      isHero: true,
+      heroDef: heroDef,
+      level: 1,
+      xp: 0,
+      xpNext: 100,
+      ability: heroDef.ability,
+      abilityReadyAt: 0,
+      // Active ability state
+      flambeUntil: 0,
+      precisionTarget: null,
+      precisionShotsLeft: 0,
+      upgrades: { damage: 0, range: 0, fireRate: 0, splash: 0, slowFactor: 0, slowDuration: 0, aura: 0 },
+      fireCooldown: 0,
+      kills: 0,
+      totalSpent: 0,
+      target: null,
+      laserTarget: null,
+      targetMode: 'first',
+      canSeeStealth: !!heroDef.canSeeStealth,
+      getDamage() {
+        const base = this.heroDef.damage * (1 + this.heroDef.levelDmg * (this.level - 1));
+        let mult = Game.computeStat('damageMult', 1);
+        // Flambe: triple rate but base dmg unchanged
+        // Power Strike doesn't apply to heroes (no purchased upgrades)
+        const perk = 1 + (Game.save.prestigePerks.globalDmg || 0) * 0.05;
+        return base * mult * perk;
+      },
+      getRange() {
+        const base = this.heroDef.range * (1 + this.heroDef.levelRange * (this.level - 1));
+        let mult = Game.computeStat('rangeMult', 1);
+        mult *= 1 + (Game.save.prestigePerks.globalRange || 0) * 0.03;
+        return base * mult;
+      },
+      getFireRate() {
+        let base = this.heroDef.fireRate * (1 + this.heroDef.levelRate * (this.level - 1));
+        let mult = Game.computeStat('fireRateMult', 1);
+        // Flambe: x3 rate
+        if (this.flambeUntil && performance.now()/1000 < this.flambeUntil) mult *= 3;
+        mult *= 1 + (Game.save.prestigePerks.globalRate || 0) * 0.03;
+        return base * mult;
+      },
+      getSplash() {
+        if (!this.heroDef.splash) return 0;
+        return this.heroDef.splash * Game.computeStat('splashMult', 1);
+      },
+      getSlowFactor() { return 0; },
+      getSlowDuration() { return 0; },
+      getAura() { return 0; },
+    };
+    return hero;
+  },
+
+  selectHero(heroId) {
+    if (!this.state) return;
+    this.state.heroId = heroId;
+    this.state.heroPlaced = false;
+    const heroDef = HEROES.find(h => h.id === heroId);
+    if (!heroDef) return;
+    // Pretend selection like a tower for placement
+    this.selectedTowerType = {
+      id: heroDef.id,
+      name: heroDef.name,
+      emoji: heroDef.emoji,
+      cost: 0,
+      range: heroDef.range,
+      color: heroDef.color,
+      _isHeroPick: true,
+      _heroDef: heroDef,
+    };
+    UI.toast(`Placing ${heroDef.emoji} ${heroDef.name} — click a tile!`);
+  },
+
+  placeHero(cx, cy) {
+    if (!this.state || this.state.heroPlaced) return false;
+    if (!this.state.heroId) return false;
+    const heroDef = HEROES.find(h => h.id === this.state.heroId);
+    if (!heroDef) return false;
+    if (this.buildGrid[cy] && this.buildGrid[cy][cx] !== 0) return false;
+    const x = cx * this.cellSize + this.cellSize / 2;
+    const y = cy * this.cellSize + this.cellSize / 2;
+    const hero = this.makeHero(heroDef, x, y);
+    this.state.towers.push(hero);
+    this.buildGrid[cy][cx] = 2;
+    this.state.heroPlaced = true;
+    this.selectedTowerType = null;
+    this.playSound('upgrade');
+    UI.toast(`${heroDef.emoji} ${heroDef.name} joins the kitchen!`);
+    UI.renderTowerShop();
+    UI.updateStats(this.state);
+    return true;
+  },
+
+  awardXP(hero, amount) {
+    if (!hero || !hero.isHero) return;
+    hero.xp += amount;
+    while (hero.xp >= hero.xpNext && hero.level < 20) {
+      hero.xp -= hero.xpNext;
+      hero.level++;
+      hero.xpNext = Math.floor(hero.xpNext * 1.45);
+      this.state.effects.push({ kind: 'text', text: `LEVEL ${hero.level}!`, x: hero.x, y: hero.y - 30, life: 1.5, vy: -28, color: '#ffd700' });
+      this.playSound('upgrade');
+      if (this.selectedTower === hero) UI.showUpgradePanel(hero);
+    }
+  },
+
+  triggerHeroAbility(hero) {
+    if (!hero || !hero.isHero || !hero.ability) return;
+    const now = performance.now() / 1000;
+    if (now < (hero.abilityReadyAt || 0)) { UI.toast('Ability on cooldown!'); return; }
+    if (hero.level < (hero.ability.unlockLevel || 1)) {
+      UI.toast(`Unlocks at Hero Lv ${hero.ability.unlockLevel}`);
+      return;
+    }
+    const abId = hero.ability.id;
+    const heroDef = hero.heroDef;
+    if (abId === 'rolling_pin') {
+      const dmg = hero.getDamage() * 3;
+      let hits = 0;
+      for (const e of this.state.enemies) {
+        if (e._dead || e.hp <= 0) continue;
+        this.damageEnemy(e, dmg, hero);
+        if (!e._dead) {
+          e.stun = { until: now + 1.0 };
+        }
+        hits++;
+      }
+      this.state.effects.push({ kind: 'shake', life: 0.5 });
+      this.state.effects.push({ kind: 'flash', life: 0.4, color: '#ffd700' });
+      UI.toast(`🥖 Rolling Pin Smash! ${hits} pasta crushed!`);
+    } else if (abId === 'flambe') {
+      hero.flambeUntil = now + 8;
+      this.state.effects.push({ kind: 'text', text: '🔥 FLAMBÉ!', x: hero.x, y: hero.y - 30, life: 1.2, vy: -20, color: '#ff6b00' });
+      UI.toast('🔥 Flambé Frenzy! Triple rate + burn!');
+    } else if (abId === 'precision_shot') {
+      // Pick closest enemy in range as marked target
+      let best = null, bestD2 = Infinity;
+      const range = hero.getRange();
+      for (const e of this.state.enemies) {
+        if (e._dead || e.hp <= 0) continue;
+        const dx = e.x - hero.x, dy = e.y - hero.y;
+        const d2 = dx*dx + dy*dy;
+        if (d2 > range*range) continue;
+        if (d2 < bestD2) { bestD2 = d2; best = e; }
+      }
+      if (!best) { UI.toast('No target in range!'); return; }
+      hero.precisionTarget = best;
+      hero.precisionShotsLeft = 5;
+      best.marked = { until: now + 8 };
+      UI.toast('🎯 Target marked! Next 5 shots deal +200%!');
+    } else if (abId === 'volcano') {
+      // Spawn 8 fireballs over 4s on random enemies
+      hero._volcanoEndAt = now + 4;
+      hero._volcanoShotsLeft = 8;
+      hero._volcanoNextAt = now;
+      UI.toast('🌋 Volcanic Eruption!');
+    }
+    hero.abilityReadyAt = now + hero.ability.cooldown;
+    this.playSound('explode');
+    if (this.selectedTower === hero) UI.showUpgradePanel(hero);
+  },
+
+  // ============ POWERS (consumables) ============
+  selectPower(powerId) {
+    const power = POWERS.find(p => p.id === powerId);
+    if (!power) return;
+    const now = performance.now() / 1000;
+    const ready = (this.state.powerCooldowns[powerId] || 0);
+    if (now < ready) { UI.toast('Power on cooldown!'); return; }
+    if (this.state.gold < power.cost) { UI.toast('Not enough gold!'); return; }
+    if (power.targeted) {
+      this.state.pendingPowerTarget = powerId;
+      this.selectedTowerType = null;
+      UI.toast(`${power.icon} Click the target location!`);
+      UI.renderPowersBar();
+      return;
+    }
+    this.usePower(power, 0, 0);
+  },
+
+  usePower(power, x, y) {
+    const now = performance.now() / 1000;
+    this.state.gold -= power.cost;
+    this.state.powerCooldowns[power.id] = now + power.cooldown;
+    this.state.pendingPowerTarget = null;
+    if (power.id === 'pasta_bomb') {
+      // AOE at (x,y)
+      let hits = 0;
+      for (const e of this.state.enemies) {
+        if (e._dead || e.hp <= 0) continue;
+        const dx = e.x - x, dy = e.y - y;
+        if (dx*dx + dy*dy <= power.radius * power.radius) {
+          this.damageEnemy(e, power.damage, null);
+          hits++;
+        }
+      }
+      this.state.effects.push({ kind: 'explosion', x, y, life: 0.7, radius: power.radius, color: '#ff5500' });
+      this.state.effects.push({ kind: 'shake', life: 0.3 });
+      this.playSound('explode');
+      UI.toast(`💣 BOOM! ${hits} pasta blasted!`);
+    } else if (power.id === 'freeze') {
+      for (const e of this.state.enemies) {
+        if (e._dead || e.hp <= 0) continue;
+        e.frozen = { until: now + power.duration };
+      }
+      this.state.effects.push({ kind: 'flash', life: 0.5, color: '#74b9ff' });
+      UI.toast('❄️ All pasta frozen!');
+    } else if (power.id === 'pay_day') {
+      this.state.gold += power.gold;
+      this.state.effects.push({ kind: 'text', text: `+${power.gold}🪙`, x: this.canvas.width/2, y: this.canvas.height/2, life: 1.2, vy: -40, color: '#ffd700' });
+      UI.toast(`💰 +${power.gold} gold!`);
+    } else if (power.id === 'garlic_bread') {
+      const before = this.state.lives;
+      this.state.lives = Math.min(this.state.maxLives, this.state.lives + power.heal);
+      const gained = this.state.lives - before;
+      UI.toast(`🥖 +${gained} lives restored!`);
+    } else if (power.id === 'sauce_storm') {
+      for (const e of this.state.enemies) {
+        if (e._dead || e.hp <= 0) continue;
+        e.slow = { factor: power.slow, until: now + power.slowDur };
+        e.burn = { dps: power.burnDps, until: now + power.burnDur };
+      }
+      this.state.effects.push({ kind: 'flash', life: 0.4, color: '#ff8c00' });
+      UI.toast('🌪️ Sauce Storm engulfs the kitchen!');
+    }
+    UI.updateStats(this.state);
+    UI.renderPowersBar();
+    this.saveGame();
+  },
+
+  // ============ BOONS (mid-run choices) ============
+  rollBoonChoices(count = 3) {
+    const owned = new Set(this.state.boons || []);
+    const usedKeystones = new Set(this.state.boonKeystonesUsed || []);
+    // Weight by tier
+    const pool = BOONS.filter(b => {
+      if (b.tier === 'legendary' && usedKeystones.has(b.id)) return false;
+      // Allow same boon to repeat (stacks)
+      return true;
+    });
+    const weights = { common: 50, rare: 25, epic: 10, legendary: 3 };
+    const choices = [];
+    const taken = new Set();
+    let safety = 50;
+    while (choices.length < count && safety-- > 0) {
+      // Build weighted list excluding already-taken
+      const candidates = pool.filter(b => !taken.has(b.id));
+      if (!candidates.length) break;
+      const totalW = candidates.reduce((s, b) => s + (weights[b.tier] || 5), 0);
+      let r = Math.random() * totalW;
+      for (const b of candidates) {
+        r -= (weights[b.tier] || 5);
+        if (r <= 0) {
+          choices.push(b);
+          taken.add(b.id);
+          break;
+        }
+      }
+    }
+    return choices;
+  },
+
+  pickBoon(boonId) {
+    const boon = BOONS.find(b => b.id === boonId);
+    if (!boon) return;
+    if (!this.state.boons) this.state.boons = [];
+    this.state.boons.push(boonId);
+    if (boon.tier === 'legendary') {
+      if (!this.state.boonKeystonesUsed) this.state.boonKeystonesUsed = [];
+      this.state.boonKeystonesUsed.push(boonId);
+    }
+    // Apply immediate effects (one-time)
+    if (boon.effect.maxLives) {
+      this.state.maxLives += boon.effect.maxLives;
+      this.state.lives = Math.min(this.state.maxLives, this.state.lives + boon.effect.maxLives);
+    }
+    if (boon.effect.goldMult && boon.id === 'sauce_master') {
+      // Sauce Master is keystone — applied via computeStat naturally
+    }
+    this.state.pendingBoonWave = 0;
+    UI.toast(`✨ Boon acquired: ${boon.icon} ${boon.name}!`);
+    UI.closeBoonModal();
+    UI.updateStats(this.state);
+    UI.renderPowersBar();
+    this.saveGame();
   },
 
   // ============ ENEMIES ============
@@ -367,7 +688,12 @@ const Game = {
       scale: def.scale || 1,
       isBoss: !!def.boss,
       dot: null,
-      flashUntil: 0
+      flashUntil: 0,
+      // EPIC enemy properties
+      shield: def.shield || 0,       // # hits absorbed before damage applies
+      stealth: !!def.stealth,        // invisible to non-detection towers
+      bossPhase: 0,                  // 0=phase1, 1=phase2 (<50%), 2=phase3 (<25%)
+      lastDamageAt: 0
     };
     this.state.enemies.push(enemy);
     if (enemy.isBoss) this.bossAlive = true;
@@ -375,20 +701,44 @@ const Game = {
 
   damageEnemy(enemy, amount, srcTower) {
     if (enemy.hp <= 0) return;
+    // Shield absorbs first N hits
+    if (enemy.shield && enemy.shield > 0) {
+      enemy.shield--;
+      this.state.effects.push({ kind: 'text', text: 'BLOCKED!', x: enemy.x, y: enemy.y - 22, life: 0.5, vy: -32, color: '#74b9ff' });
+      return;
+    }
     // Dodge: some pasta types shimmy past attacks
     if (enemy.def && enemy.def.dodge && Math.random() < enemy.def.dodge) {
       this.state.effects.push({ kind: 'text', text: 'DODGE!', x: enemy.x, y: enemy.y - 22, life: 0.5, vy: -32, color: '#74b9ff' });
       return;
     }
     const skills = this.state.skillPoints || {};
-    // Crit
-    const critChance = this.computeStat('critChance', 0) + (this.save.prestigePerks.critBase || 0) * 0.03;
+    const now = performance.now() / 1000;
+    // Crit (extra from Chef Sergio hero scaling)
+    let critChance = this.computeStat('critChance', 0) + (this.save.prestigePerks.critBase || 0) * 0.03;
+    if (srcTower && srcTower.isHero && srcTower.heroDef.bonusCrit) {
+      critChance += srcTower.heroDef.bonusCrit + (srcTower.heroDef.levelCrit || 0) * ((srcTower.level || 1) - 1);
+    }
     let dmg = amount;
     let isCrit = false;
     if (Math.random() < critChance) {
-      dmg *= 2;
+      const critMult = 2 + this.computeStat('critMult', 0);
+      dmg *= critMult;
       isCrit = true;
       this.state.effects.push({ kind: 'text', text: 'CRIT!', x: enemy.x, y: enemy.y - 20, life: 0.6, vy: -40, color: '#ffd700' });
+    }
+    // Marked target — bonus damage (Precision Shot)
+    if (enemy.marked && now < enemy.marked.until) {
+      dmg *= 3;
+      this.state.effects.push({ kind: 'text', text: 'MARKED!', x: enemy.x, y: enemy.y - 26, life: 0.4, vy: -24, color: '#27ae60' });
+      // Hero ammo
+      if (srcTower && srcTower.isHero && srcTower.precisionTarget === enemy) {
+        srcTower.precisionShotsLeft--;
+        if (srcTower.precisionShotsLeft <= 0) {
+          srcTower.precisionTarget = null;
+          enemy.marked = null;
+        }
+      }
     }
     // Boss bonus damage
     if (enemy.isBoss) {
@@ -413,17 +763,91 @@ const Game = {
       enemy.slow = { factor: Math.min(enemy.slow ? enemy.slow.factor : 1, factor), until: performance.now()/1000 + 1 };
     }
     enemy.hp -= dmg;
-    enemy.flashUntil = performance.now() / 1000 + 0.08;
+    enemy.lastDamageAt = now; // for regen pause
+    enemy.flashUntil = now + 0.08;
+    // Regen indicator: pause regen for X seconds after last hit (handled in update loop)
+    // === STATUS EFFECTS FROM BOONS & HEROES ===
+    // Burn on hit (Pyromaniac boon / Lil Pepe hero / Flambé)
+    if (enemy.hp > 0) {
+      let burnDps = 0, burnDur = 0;
+      const boonBurn = this.getBoonEffect('burnOnHit');
+      if (boonBurn) { burnDps = Math.max(burnDps, boonBurn.dps); burnDur = Math.max(burnDur, boonBurn.duration); }
+      if (srcTower && srcTower.isHero) {
+        const hd = srcTower.heroDef;
+        if (hd && hd.burnOnHit) { burnDps = Math.max(burnDps, hd.burnOnHit.dps); burnDur = Math.max(burnDur, hd.burnOnHit.duration); }
+        // Flambé: all hero shots burn while active
+        if (srcTower.flambeUntil && now < srcTower.flambeUntil) {
+          burnDps = Math.max(burnDps, 8); burnDur = Math.max(burnDur, 3);
+        }
+      }
+      if (burnDps > 0) {
+        const until = now + burnDur;
+        enemy.burn = enemy.burn && enemy.burn.until > until
+          ? { dps: Math.max(enemy.burn.dps, burnDps), until: enemy.burn.until }
+          : { dps: burnDps, until };
+      }
+      // Stun chance (Frostbite boon)
+      const stunChance = this.hasBoonField('stunChance');
+      if (stunChance && Math.random() < stunChance) {
+        const sd = this.hasBoonField('stunDur') || 0.5;
+        enemy.stun = { until: now + sd };
+      }
+      // Chain lightning (Static Charge boon)
+      const chainChance = this.hasBoonField('chainChance');
+      if (chainChance && Math.random() < chainChance && srcTower) {
+        // Hit one nearby enemy for 50% damage (no further chain)
+        let near = null, bestD2 = Infinity;
+        for (const o of this.state.enemies) {
+          if (o === enemy || o._dead || o.hp <= 0) continue;
+          const dx = o.x - enemy.x, dy = o.y - enemy.y;
+          const d2 = dx*dx + dy*dy;
+          if (d2 < 100*100 && d2 < bestD2) { bestD2 = d2; near = o; }
+        }
+        if (near) {
+          this.state.effects.push({ kind: 'lightning', x1: enemy.x, y1: enemy.y, x2: near.x, y2: near.y, life: 0.25 });
+          this.damageEnemy(near, dmg * 0.5, srcTower);
+        }
+      }
+    }
     // Frenzy: track recent kills on tower
     if (enemy.hp <= 0 && srcTower) {
       const frenzy = this.computeStat('frenzy', 0);
       if (frenzy > 0) {
         srcTower.frenzyStacks = Math.min(5, (srcTower.frenzyStacks || 0) + 1);
-        srcTower.frenzyUntil = performance.now()/1000 + 1.5;
+        srcTower.frenzyUntil = now + 1.5;
       }
     }
     if (enemy.hp <= 0) {
       this.killEnemy(enemy, srcTower);
+    } else if (enemy.isBoss) {
+      // Boss phases: 50% → enrage (gain shield + speed boost), 25% → second wind (spawn minions)
+      const ratio = enemy.hp / enemy.maxHp;
+      if (enemy.bossPhase < 1 && ratio < 0.5) {
+        enemy.bossPhase = 1;
+        enemy.shield = (enemy.shield || 0) + 5;
+        enemy.baseSpeed *= 1.25;
+        this.state.effects.push({ kind: 'text', text: 'ENRAGED!', x: enemy.x, y: enemy.y - 30, life: 1.5, vy: -24, color: '#e74c3c' });
+        this.state.effects.push({ kind: 'flash', life: 0.3, color: '#ff0000' });
+      } else if (enemy.bossPhase < 2 && ratio < 0.25) {
+        enemy.bossPhase = 2;
+        // Spawn 3 minion meatballs at boss position
+        for (let i = 0; i < 3; i++) {
+          const def = ENEMIES['meatball'];
+          if (!def) break;
+          const minion = {
+            type: 'meatball', def,
+            x: enemy.x + (Math.random()-0.5)*30, y: enemy.y + (Math.random()-0.5)*30,
+            hp: def.hp * 0.6, maxHp: def.hp * 0.6,
+            speed: def.speed * 1.4, baseSpeed: def.speed * 1.4,
+            progress: enemy.progress, pathDist: Math.max(0, enemy.pathDist - 20 + i*10),
+            segIdx: enemy.segIdx, segT: enemy.segT,
+            armor: 0, gold: 5, slow: null, scale: 0.7,
+            isBoss: false, dot: null, flashUntil: 0, shield: 0, stealth: false, bossPhase: 0
+          };
+          this.state.enemies.push(minion);
+        }
+        this.state.effects.push({ kind: 'text', text: 'SECOND WIND!', x: enemy.x, y: enemy.y - 30, life: 1.5, vy: -24, color: '#ff6b00' });
+      }
     }
   },
 
@@ -465,6 +889,11 @@ const Game = {
     const scoreMult = (this.state.mods && this.state.mods.score) || 1;
     this.state.score += Math.floor(enemy.maxHp * 0.5 * scoreMult);
     if (srcTower) srcTower.kills = (srcTower.kills || 0) + 1;
+    // Award XP to ALL heroes (regardless of who killed) so heroes always progress
+    const xpAmount = enemy.isBoss ? 80 : Math.max(5, Math.floor((enemy.maxHp || 10) / 4));
+    for (const t of this.state.towers) {
+      if (t.isHero) this.awardXP(t, xpAmount);
+    }
     this.state.effects.push({ kind: 'pop', x: enemy.x, y: enemy.y, life: 0.5, color: enemy.def.color });
     this.state.effects.push({ kind: 'text', text: '+' + gold, x: enemy.x, y: enemy.y - 10, life: 0.7, vy: -30, color: '#ffd700' });
     this.playSound(enemy.isBoss ? 'bossDie' : 'kill');
@@ -472,21 +901,34 @@ const Game = {
   },
 
   // ============ TARGETING ============
+  // Per-tower targeting modes:
+  //   first  — furthest along path (closest to goal) — default
+  //   last   — least along path (newest spawn)
+  //   strong — highest current HP
+  //   weak   — lowest current HP (finish them)
+  //   close  — physically closest to tower
   pickTarget(tower, enemies) {
     const range = tower.getRange();
+    const r2 = range * range;
+    const mode = tower.targetMode || 'first';
     let best = null;
-    let bestDist = Infinity;
+    let bestScore = Infinity;
     for (const e of enemies) {
       if (e.hp <= 0 || e._dead) continue;
+      if (e.stealth && !tower.canSeeStealth) continue;
       const dx = e.x - tower.x, dy = e.y - tower.y;
-      const d = dx*dx + dy*dy;
-      if (d > range * range) continue;
-      // Prefer enemy furthest along path (closest to goal)
-      const score = -e.pathDist;
-      if (score < bestDist) {
-        bestDist = score;
-        best = e;
+      const d2 = dx*dx + dy*dy;
+      if (d2 > r2) continue;
+      let score;
+      switch (mode) {
+        case 'last':   score = e.pathDist; break;
+        case 'strong': score = -e.hp; break;
+        case 'weak':   score = e.hp; break;
+        case 'close':  score = d2; break;
+        case 'first':
+        default:       score = -e.pathDist; break;
       }
+      if (score < bestScore) { bestScore = score; best = e; }
     }
     return best;
   },
@@ -515,18 +957,54 @@ const Game = {
     if (skills.goldenAge) {
       if (type === 'goldMult') val += 0.30;
     }
+    // Boons (mid-run buffs) — sum scalar effects of matching type
+    const boons = this.state.boons || [];
+    for (const boonId of boons) {
+      const boon = BOONS.find(b => b.id === boonId);
+      if (!boon || !boon.effect) continue;
+      const v = boon.effect[type];
+      if (typeof v === 'number') val += v;
+    }
     return val;
+  },
+
+  // Convenience: aggregate boon effects of a non-scalar type (e.g. burnOnHit).
+  // Returns the FIRST matching effect object or null.
+  getBoonEffect(key) {
+    const boons = this.state.boons || [];
+    for (const boonId of boons) {
+      const boon = BOONS.find(b => b.id === boonId);
+      if (boon && boon.effect && boon.effect[key]) return boon.effect[key];
+    }
+    return null;
+  },
+
+  hasBoonField(key) {
+    const boons = this.state.boons || [];
+    for (const boonId of boons) {
+      const boon = BOONS.find(b => b.id === boonId);
+      if (boon && boon.effect && boon.effect[key] !== undefined) return boon.effect[key];
+    }
+    return null;
   },
 
   computeAuraBoost(tower) {
     let boost = 0;
     for (const other of this.state.towers) {
       if (other === tower) continue;
-      if (!other.def.aura) continue;
-      const r = other.getRange();
-      const dx = other.x - tower.x, dy = other.y - tower.y;
-      if (dx*dx + dy*dy <= r*r) {
-        boost += other.getAura();
+      // Standard aura towers (lasagna)
+      if (other.def.aura) {
+        const r = other.getRange();
+        const dx = other.x - tower.x, dy = other.y - tower.y;
+        if (dx*dx + dy*dy <= r*r) boost += other.getAura();
+      }
+      // Hero aura (Nonna: damageMult to nearby towers based on her level)
+      if (other.isHero && other.def.auraType === 'damageMult' && other.def.auraValue) {
+        const ar = other.def.auraRange || 120;
+        const dx = other.x - tower.x, dy = other.y - tower.y;
+        if (dx*dx + dy*dy <= ar*ar) {
+          boost += other.def.auraValue * (other.level || 1);
+        }
       }
     }
     return boost;
@@ -643,6 +1121,16 @@ const Game = {
 
     if (this.state.wave >= MAX_WAVES && !this.state.endlessMode) {
       UI.showVictory();
+      return;
+    }
+    // BOONS: every 5 waves, offer 3-choice boon (skip on victory wave)
+    const w = this.state.wave;
+    if (w > 0 && w % 5 === 0) {
+      const choices = this.rollBoonChoices(3);
+      if (choices.length) {
+        this.state.pendingBoonWave = w;
+        UI.showBoonChoice(choices);
+      }
     }
   },
 
@@ -745,7 +1233,22 @@ const Game = {
     const mx = (e.clientX - rect.left) * scaleX;
     const my = (e.clientY - rect.top) * scaleY;
 
-    // Click existing tower?
+    // 1) Pending power target — resolve here
+    if (this.state.pendingPowerTarget) {
+      const power = POWERS.find(p => p.id === this.state.pendingPowerTarget);
+      if (power) this.usePower(power, mx, my);
+      return;
+    }
+
+    // 2) Hero placement
+    if (this.selectedTowerType && this.selectedTowerType._isHeroPick) {
+      const cx = Math.floor(mx / this.cellSize);
+      const cy = Math.floor(my / this.cellSize);
+      this.placeHero(cx, cy);
+      return;
+    }
+
+    // 3) Click existing tower?
     let clicked = null;
     let bestD = 35 * 35;
     for (const t of this.state.towers) {
@@ -841,15 +1344,37 @@ const Game = {
 
     // Move enemies along path
     const enemies = this.state.enemies;
+    const nowT = performance.now() / 1000;
     for (let i = enemies.length - 1; i >= 0; i--) {
       const e = enemies[i];
       if (e._dead || e.hp <= 0) { enemies.splice(i, 1); continue; }
+      // === Status effects: freeze/stun overrides slow ===
+      let frozen = (e.frozen && nowT < e.frozen.until) || (e.stun && nowT < e.stun.until);
+      if (e.frozen && nowT >= e.frozen.until) e.frozen = null;
+      if (e.stun && nowT >= e.stun.until) e.stun = null;
+      // Burn DoT
+      if (e.burn) {
+        if (nowT >= e.burn.until) e.burn = null;
+        else this.damageEnemy(e, e.burn.dps * dt, null);
+        if (e._dead || e.hp <= 0) { enemies.splice(i, 1); continue; }
+      }
+      // Regen (enemy property — only if not damaged recently)
+      if (e.def && e.def.regen && !frozen) {
+        const safe = !e.lastDamageAt || (nowT - e.lastDamageAt) > 2.5;
+        if (safe && e.hp < e.maxHp) {
+          e.hp = Math.min(e.maxHp, e.hp + e.def.regen * dt);
+        }
+      }
       // Slow effect
       let speedFactor = 1;
-      if (e.slow && performance.now() / 1000 < e.slow.until) {
+      if (e.slow && nowT < e.slow.until) {
         speedFactor = 1 - e.slow.factor;
       } else {
         e.slow = null;
+      }
+      // Frozen/stunned: skip movement entirely
+      if (frozen) {
+        continue;
       }
       const enemySpeedAdj = 1 + this.computeStat('enemySpeedMult', 0);
       const speed = e.baseSpeed * enemySpeedAdj * speedFactor;
@@ -938,22 +1463,66 @@ const Game = {
         }
         continue;
       }
+      // Hero volcano ability ticks (independent of normal firing)
+      if (tower.isHero && tower._volcanoEndAt && nowT < tower._volcanoEndAt && tower._volcanoShotsLeft > 0) {
+        if (nowT >= (tower._volcanoNextAt || 0)) {
+          // Pick random enemy
+          const alive = enemies.filter(e => !e._dead && e.hp > 0);
+          if (alive.length) {
+            const tgt = alive[Math.floor(Math.random() * alive.length)];
+            // Spawn fireball as splash projectile from sky
+            this.state.projectiles.push({
+              x: tgt.x + (Math.random() - 0.5) * 80, y: -20,
+              targetEnemy: tgt,
+              speed: 600,
+              damage: 60,
+              splash: 60,
+              slow: null,
+              symbol: '🔥',
+              kind: '_default',
+              angle: Math.PI / 2,
+              spin: 0,
+              color: '#ff5500',
+              srcTower: tower,
+              life: 2,
+              pierceLeft: 0,
+              hitSet: null,
+              fireball: true
+            });
+            tower._volcanoShotsLeft--;
+            tower._volcanoNextAt = nowT + (4 / 8);
+          }
+        }
+      }
       if (tower.fireCooldown > 0) continue;
-      // Find target
-      const target = this.pickTarget(tower, enemies);
+      // Hero precision shot: force fire at marked target
+      let target;
+      if (tower.isHero && tower.precisionTarget && !tower.precisionTarget._dead && tower.precisionTarget.hp > 0) {
+        const px = tower.precisionTarget.x - tower.x, py = tower.precisionTarget.y - tower.y;
+        const range = tower.getRange();
+        if (px*px + py*py <= range*range) {
+          target = tower.precisionTarget;
+        } else {
+          target = this.pickTarget(tower, enemies);
+        }
+      } else {
+        target = this.pickTarget(tower, enemies);
+      }
       tower.target = target;
       if (!target) continue;
       tower.fireCooldown = 1 / fr;
       // Spawn projectile
       const pierceCount = this.computeStat('pierce', 0);
+      const splashOnHit = this.hasBoonField('splashOnHit') || 0;
       const dx = target.x - tower.x, dy = target.y - tower.y;
       const angle = Math.atan2(dy, dx);
-      const proj = {
+      const baseSplash = tower.getSplash();
+      const baseProj = {
         x: tower.x, y: tower.y,
         targetEnemy: target,
         speed: tower.def.projectileSpeed || 500,
         damage: tower.getDamage(),
-        splash: tower.getSplash(),
+        splash: Math.max(baseSplash, splashOnHit),
         slow: tower.def.slow ? { factor: tower.getSlowFactor(), duration: tower.getSlowDuration() } : null,
         symbol: tower.def.projectile || '•',
         kind: tower.def.projKind || '_default',
@@ -965,7 +1534,21 @@ const Game = {
         pierceLeft: pierceCount,
         hitSet: null
       };
-      this.state.projectiles.push(proj);
+      this.state.projectiles.push(baseProj);
+      // Multishot (Double Tap boon + skill tree multishot)
+      const msChance = this.computeStat('multishot', 0) + (this.hasBoonField('multishot') || 0);
+      if (msChance > 0 && Math.random() < msChance) {
+        // Find an alternate target if available
+        let altTarget = target;
+        for (const e of enemies) {
+          if (e === target || e._dead || e.hp <= 0) continue;
+          const ex = e.x - tower.x, ey = e.y - tower.y;
+          if (ex*ex + ey*ey > tower.getRange() * tower.getRange()) continue;
+          altTarget = e; break;
+        }
+        const ang2 = Math.atan2(altTarget.y - tower.y, altTarget.x - tower.x);
+        this.state.projectiles.push({ ...baseProj, targetEnemy: altTarget, angle: ang2, x: tower.x, y: tower.y });
+      }
       // Aim tower at last target (for visual rotation)
       tower.angle = angle;
       this.playSound('shoot');
@@ -1034,6 +1617,15 @@ const Game = {
     if (this.tauntTimer <= 0) {
       this.tauntTimer = 10 + Math.random() * 8;
       this.tryRandomTaunt();
+    }
+
+    // Throttled powers bar update (every ~0.5s) so cooldowns tick visibly
+    this._powerBarTimer = (this._powerBarTimer || 0) - dt;
+    if (this._powerBarTimer <= 0) {
+      this._powerBarTimer = 0.5;
+      UI.renderPowersBar();
+      // Also refresh upgrade panel if a hero is selected (for ability CD ticking)
+      if (this.selectedTower && this.selectedTower.isHero) UI.showUpgradePanel(this.selectedTower);
     }
 
     // Check wave end
@@ -1176,11 +1768,37 @@ const Game = {
         ctx.arc(x, y, this.selectedTowerType.range * this.computeStat('rangeMult', 1), 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
-        // Tower ghost
+        // Tower ghost (or hero emoji)
         ctx.globalAlpha = 0.65;
-        Sprites.drawTower(ctx, this.selectedTowerType.id, this.selectedTowerType, x, y, 36, renderTime, 0);
+        if (this.selectedTowerType._isHeroPick) {
+          ctx.font = 'bold 28px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = this.selectedTowerType.color;
+          ctx.fillText(this.selectedTowerType.emoji, x, y);
+        } else {
+          Sprites.drawTower(ctx, this.selectedTowerType.id, this.selectedTowerType, x, y, 36, renderTime, 0);
+        }
         ctx.globalAlpha = 1.0;
       }
+    }
+    // Power targeting reticle
+    if (this.state.pendingPowerTarget && this.hoverCell) {
+      const power = POWERS.find(p => p.id === this.state.pendingPowerTarget);
+      const mx = this.hoverCell.cx * this.cellSize + this.cellSize/2;
+      const my = this.hoverCell.cy * this.cellSize + this.cellSize/2;
+      if (power && power.radius) {
+        ctx.strokeStyle = '#ff5500';
+        ctx.fillStyle = 'rgba(255,85,0,0.15)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath(); ctx.arc(mx, my, power.radius, 0, Math.PI*2);
+        ctx.fill(); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      ctx.font = 'bold 24px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(power.icon, mx, my);
     }
 
     // Selected tower range
@@ -1215,8 +1833,61 @@ const Game = {
       ctx.ellipse(t.x, t.y + 16, 16, 5, 0, 0, Math.PI*2);
       ctx.fill();
       const totalUp = Object.values(t.upgrades).reduce((a, b) => a + b, 0);
-      // Custom sprite
-      Sprites.drawTower(ctx, t.def.id, t.def, t.x, t.y, 38, renderTime, totalUp);
+      // Custom sprite (or hero-specific render)
+      if (t.isHero) {
+        // Hero medallion: glowing circle with emoji + level badge
+        const pulse = 0.5 + Math.sin(renderTime * 3) * 0.5;
+        ctx.save();
+        // Hero aura ring
+        if (t.heroDef.auraRange) {
+          ctx.strokeStyle = `rgba(255, 215, 0, ${0.15 + pulse * 0.1})`;
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([4, 6]);
+          ctx.beginPath(); ctx.arc(t.x, t.y, t.heroDef.auraRange, 0, Math.PI * 2); ctx.stroke();
+          ctx.setLineDash([]);
+        }
+        // Outer glow disc
+        const grad = ctx.createRadialGradient(t.x, t.y, 4, t.x, t.y, 26);
+        grad.addColorStop(0, t.def.color + 'ee');
+        grad.addColorStop(0.6, t.def.color + '88');
+        grad.addColorStop(1, t.def.color + '00');
+        ctx.fillStyle = grad;
+        ctx.beginPath(); ctx.arc(t.x, t.y, 26, 0, Math.PI * 2); ctx.fill();
+        // Hero emoji
+        ctx.font = 'bold 28px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(t.def.emoji, t.x, t.y);
+        // Level badge
+        ctx.fillStyle = '#ffd700';
+        ctx.strokeStyle = '#2a1810';
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(t.x + 14, t.y + 12, 9, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#2a1810';
+        ctx.font = 'bold 11px sans-serif';
+        ctx.fillText(t.level, t.x + 14, t.y + 12);
+        // Precision marker line (if active)
+        if (t.precisionTarget && !t.precisionTarget._dead) {
+          ctx.strokeStyle = 'rgba(39,174,96,0.7)';
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([5, 4]);
+          ctx.beginPath();
+          ctx.moveTo(t.x, t.y);
+          ctx.lineTo(t.precisionTarget.x, t.precisionTarget.y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+        // Ability ready indicator
+        const cdLeft = Math.max(0, (t.abilityReadyAt || 0) - renderTime);
+        if (cdLeft <= 0 && t.level >= (t.ability?.unlockLevel || 1)) {
+          ctx.strokeStyle = `rgba(255, 215, 0, ${0.5 + pulse * 0.5})`;
+          ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.arc(t.x, t.y, 22, 0, Math.PI * 2); ctx.stroke();
+        }
+        ctx.restore();
+      } else {
+        Sprites.drawTower(ctx, t.def.id, t.def, t.x, t.y, 38, renderTime, totalUp);
+      }
       // Lasagna aura visual
       if (t.def.aura) {
         ctx.fillStyle = 'rgba(214,48,49,0.05)';
@@ -1289,6 +1960,48 @@ const Game = {
         ctx.stroke();
         ctx.setLineDash([]);
       }
+      // === Status effect icons (small badges around enemy) ===
+      const badges = [];
+      if (e.burn && nowS < e.burn.until) badges.push({ icon: '🔥', color: '#ff5500' });
+      if (e.frozen && nowS < e.frozen.until) badges.push({ icon: '❄', color: '#74b9ff' });
+      if (e.stun && nowS < e.stun.until) badges.push({ icon: '⚡', color: '#ffd700' });
+      if (e.marked && nowS < e.marked.until) badges.push({ icon: '🎯', color: '#27ae60' });
+      if (e.shield > 0) badges.push({ icon: '🛡', color: '#74b9ff', count: e.shield });
+      if (e.def && e.def.regen) badges.push({ icon: '💚', color: '#6ab04c' });
+      if (e.bossPhase >= 1) badges.push({ icon: '⚔', color: '#e74c3c' });
+      badges.forEach((b, i) => {
+        const bx = e.x + (i - (badges.length - 1) / 2) * 10;
+        const by = e.y - sz/2 - 16;
+        ctx.font = 'bold 11px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = b.color;
+        ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+        ctx.lineWidth = 3;
+        ctx.strokeText(b.icon, bx, by);
+        ctx.fillText(b.icon, bx, by);
+        if (b.count !== undefined) {
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 8px sans-serif';
+          ctx.strokeText(b.count, bx, by + 5);
+          ctx.fillText(b.count, bx, by + 5);
+        }
+      });
+      // Burn fire flicker overlay
+      if (e.burn && nowS < e.burn.until) {
+        ctx.save();
+        ctx.globalAlpha = 0.35 + Math.sin(nowS * 18) * 0.15;
+        ctx.fillStyle = '#ff6b00';
+        ctx.beginPath(); ctx.arc(e.x, e.y, sz/2 + 2, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
+      // Frozen blue overlay
+      if (e.frozen && nowS < e.frozen.until) {
+        ctx.save();
+        ctx.globalAlpha = 0.35;
+        ctx.fillStyle = '#74b9ff';
+        ctx.beginPath(); ctx.arc(e.x, e.y, sz/2 + 2, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
       // Boss label
       if (e.isBoss) {
         ctx.fillStyle = '#ff6b6b';
@@ -1329,7 +2042,36 @@ const Game = {
         ctx.globalAlpha = Math.min(1, f.life * 2);
         ctx.font = 'bold 14px sans-serif';
         ctx.textAlign = 'center';
+        ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+        ctx.lineWidth = 3;
+        ctx.strokeText(f.text, f.x, f.y);
         ctx.fillText(f.text, f.x, f.y);
+        ctx.globalAlpha = 1;
+      } else if (f.kind === 'lightning') {
+        // Jagged lightning bolt between two points
+        ctx.strokeStyle = '#ffffff';
+        ctx.shadowColor = '#74b9ff';
+        ctx.shadowBlur = 10;
+        ctx.lineWidth = 2;
+        ctx.globalAlpha = Math.min(1, f.life / 0.25);
+        ctx.beginPath();
+        const segs = 5;
+        let px = f.x1, py = f.y1;
+        ctx.moveTo(px, py);
+        for (let s = 1; s <= segs; s++) {
+          const t = s / segs;
+          const tx = f.x1 + (f.x2 - f.x1) * t + (s < segs ? (Math.random() - 0.5) * 12 : 0);
+          const ty = f.y1 + (f.y2 - f.y1) * t + (s < segs ? (Math.random() - 0.5) * 12 : 0);
+          ctx.lineTo(tx, ty);
+          px = tx; py = ty;
+        }
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 1;
+      } else if (f.kind === 'flash') {
+        ctx.fillStyle = f.color || '#ffffff';
+        ctx.globalAlpha = (f.life / 0.5) * 0.5;
+        ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         ctx.globalAlpha = 1;
       }
     }
@@ -1352,8 +2094,17 @@ const Game = {
         endlessMode: this.state.endlessMode,
         mapId: this.state.mapId,
         towers: (this.state.towers || []).map(t => ({
-          defId: t.def.id, x: t.x, y: t.y, upgrades: t.upgrades, kills: t.kills, totalSpent: t.totalSpent
-        }))
+          defId: t.def.id, x: t.x, y: t.y, upgrades: t.upgrades, kills: t.kills, totalSpent: t.totalSpent,
+          targetMode: t.targetMode,
+          isHero: !!t.isHero, heroId: t.isHero ? t.heroDef.id : null,
+          level: t.level || 0, xp: t.xp || 0, xpNext: t.xpNext || 100,
+          abilityReadyAt: t.abilityReadyAt || 0
+        })),
+        heroId: this.state.heroId,
+        heroPlaced: this.state.heroPlaced,
+        boons: this.state.boons || [],
+        boonKeystonesUsed: this.state.boonKeystonesUsed || [],
+        powerCooldowns: this.state.powerCooldowns || {}
       };
     } else if (this.state && this.state.lives <= 0) {
       lastRun = null; // wipe on death
@@ -1457,14 +2208,34 @@ function resumeRunIfAvailable() {
   Game.state.skillPoints = lr.skillPoints || {};
   Game.state.endlessMode = !!lr.endlessMode;
   Game.state.towers = [];
+  // EPIC: restore hero + boon state
+  Game.state.heroId = lr.heroId || null;
+  Game.state.heroPlaced = !!lr.heroPlaced;
+  Game.state.boons = lr.boons || [];
+  Game.state.boonKeystonesUsed = lr.boonKeystonesUsed || [];
+  Game.state.powerCooldowns = lr.powerCooldowns || {};
   if (lr.towers) {
     for (const td of lr.towers) {
-      const def = TOWERS.find(t => t.id === td.defId);
-      if (!def) continue;
-      const tower = Game.makeTower(def, td.x, td.y);
-      tower.upgrades = Object.assign(tower.upgrades, td.upgrades || {});
-      tower.kills = td.kills || 0;
-      tower.totalSpent = td.totalSpent || def.cost;
+      let tower;
+      if (td.isHero && td.heroId) {
+        const heroDef = HEROES.find(h => h.id === td.heroId);
+        if (!heroDef) continue;
+        tower = Game.makeHero(heroDef, td.x, td.y);
+        tower.level = td.level || 1;
+        tower.xp = td.xp || 0;
+        tower.xpNext = td.xpNext || 100;
+        tower.kills = td.kills || 0;
+        tower.abilityReadyAt = td.abilityReadyAt || 0;
+        tower.targetMode = td.targetMode || 'first';
+      } else {
+        const def = TOWERS.find(t => t.id === td.defId);
+        if (!def) continue;
+        tower = Game.makeTower(def, td.x, td.y);
+        tower.upgrades = Object.assign(tower.upgrades, td.upgrades || {});
+        tower.kills = td.kills || 0;
+        tower.totalSpent = td.totalSpent || def.cost;
+        tower.targetMode = td.targetMode || 'first';
+      }
       Game.state.towers.push(tower);
       const cx = Math.floor(td.x / Game.cellSize);
       const cy = Math.floor(td.y / Game.cellSize);
@@ -1474,6 +2245,9 @@ function resumeRunIfAvailable() {
   UI.renderTowerShop();
   UI.renderWavePreview();
   UI.updateStats(Game.state);
+  UI.renderPowersBar();
+  // If hero was already chosen, dismiss the hero-select modal that newRun queued
+  if (lr.heroId && UI.el.heroSelectModal) UI.el.heroSelectModal.classList.remove('visible');
   if (UI.el.btnStartWave) UI.el.btnStartWave.textContent = '▶ Start Wave ' + (Game.state.wave + 1);
 }
 

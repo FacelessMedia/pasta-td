@@ -393,11 +393,6 @@ const ENEMIES = {
     lore: 'Looks like spaghetti — until you see the secret hollow core. Twice the bite.',
     strength: 'Fast tank', weakness: 'Pierce + Splash', tags: ['fast', 'tank']
   },
-  tortellini: {
-    name: 'Tortellini Twirler', emoji: '🥟', hp: 200, speed: 105, gold: 30, color: '#e9c389',
-    lore: 'Belly-button-shaped. Comes in pairs — kill one and the other gets twice as twirly.',
-    strength: 'Pairs spawn', weakness: 'Heavy splash', tags: ['fast']
-  },
   gnocchi: {
     name: 'Gnocchi Goon', emoji: '🥔', hp: 420, speed: 38, gold: 38, color: '#f5e6c8',
     lore: 'A potato dumpling with a grudge. Hits the floor harder than your dough rolling.',
@@ -405,8 +400,9 @@ const ENEMIES = {
   },
   angelHair: {
     name: 'Angel Hair Assassin', emoji: '✨', hp: 105, speed: 155, gold: 28, color: '#fff4d6', fast: true,
-    lore: 'Whisper-thin and lightning-quick. You blink, it\'s through. Capellini\'s deadlier cousin.',
-    strength: 'BLAZING speed', weakness: 'Slow effects', tags: ['fast']
+    stealth: true,
+    lore: 'Whisper-thin and lightning-quick. Invisible to most kitchen tools — only sharp-eyed snipers see it.',
+    strength: 'BLAZING speed + STEALTH', weakness: 'Sniper heroes', tags: ['fast', 'stealth']
   },
   pappardelle: {
     name: 'Pappardelle Pummeler', emoji: '🍜', hp: 580, speed: 35, gold: 55, color: '#e8b56c',
@@ -414,9 +410,14 @@ const ENEMIES = {
     strength: 'Huge HP', weakness: 'High DPS', tags: ['tank']
   },
   conchiglie: {
-    name: 'Conchiglie Crusher', emoji: '�', hp: 540, speed: 50, gold: 52, armor: 0.3, color: '#e6a878',
-    lore: 'Shell pasta with literal armor. Cracks reveal sharp salty bites and ancient resentment.',
-    strength: '30% armor', weakness: 'Heavy single hits', tags: ['armor']
+    name: 'Conchiglie Crusher', emoji: '🐚', hp: 540, speed: 50, gold: 52, armor: 0.3, shield: 2, color: '#e6a878',
+    lore: 'Shell pasta with literal armor and a SHIELD that absorbs the first 2 hits. Crack it twice before damage lands.',
+    strength: '30% armor + 2-hit shield', weakness: 'Sustained fire', tags: ['armor', 'shield']
+  },
+  tortellini: {
+    name: 'Tortellini Twirler', emoji: '🥟', hp: 200, speed: 105, gold: 30, color: '#e9c389', regen: 8,
+    lore: 'Belly-button-shaped self-healing pasta. Damage it and pause — it stitches itself back together.',
+    strength: 'Regenerates 8 HP/s', weakness: 'Burst DPS', tags: ['fast', 'regen']
   },
   cannelloni: {
     name: 'Cannelloni Cannon', emoji: '🌯', hp: 760, speed: 42, gold: 68, armor: 0.15, color: '#d49a5e',
@@ -816,6 +817,215 @@ function makeDefaultSave() {
   };
 }
 
+// ============== HEROES ==============
+// Special towers placed once per run. They level up via XP from kills and have
+// 1 manual active ability. Selected at run start.
+const HEROES = [
+  {
+    id: 'nonna',
+    name: 'Nonna Rossi',
+    title: 'The Matriarch',
+    emoji: '👵',
+    color: '#c0392b',
+    desc: 'Slow but devastating. Buffs all nearby towers and unleashes a screen-wide rolling pin smash.',
+    flavor: '"You eat-a my pasta, you fight-a my Nonna."',
+    // Base combat stats (overrides def values)
+    damage: 18,
+    range: 130,
+    fireRate: 0.9,
+    projectileSpeed: 480,
+    splash: 0,
+    // Per-level multipliers (applied to base)
+    levelDmg: 0.20,   // +20% dmg per level
+    levelRange: 0.04, // +4% range per level
+    levelRate: 0.05,  // +5% rate per level
+    // Passive aura: nearby towers get +X% dmg (per hero level)
+    auraType: 'damageMult',
+    auraValue: 0.05,  // +5% per hero level to nearby towers (within 120px)
+    auraRange: 120,
+    ability: {
+      id: 'rolling_pin',
+      name: 'Rolling Pin Smash',
+      icon: '🥖',
+      desc: 'Crush ALL enemies on screen for 3× hero damage + 1s stun.',
+      cooldown: 35,
+      unlockLevel: 1,
+    },
+    projKind: 'meatball',
+    projectile: '🥩'
+  },
+  {
+    id: 'sergio',
+    name: 'Chef Sergio',
+    title: 'The Saucier',
+    emoji: '👨‍🍳',
+    color: '#e67e22',
+    desc: 'Fast-firing dual-wielding pasta chef. Hurls a torrent of crit-prone knives.',
+    flavor: '"Mamma mia, you\'re going to be DICED!"',
+    damage: 8,
+    range: 145,
+    fireRate: 2.4,
+    projectileSpeed: 700,
+    levelDmg: 0.15,
+    levelRange: 0.03,
+    levelRate: 0.08,
+    bonusCrit: 0.10, // +10% base crit
+    levelCrit: 0.02, // +2% crit per level
+    ability: {
+      id: 'flambe',
+      name: 'Flambé Frenzy',
+      icon: '🔥',
+      desc: '8s: triple fire rate AND every shot ignites for burn DoT.',
+      cooldown: 45,
+      unlockLevel: 3,
+    },
+    projKind: 'knife',
+    projectile: '🔪'
+  },
+  {
+    id: 'vincenzo',
+    name: 'Don Vincenzo',
+    title: 'The Marksman',
+    emoji: '🎯',
+    color: '#27ae60',
+    desc: 'Sniper hero. Massive range, slow rate, devastating single-target damage. Sees stealth.',
+    flavor: '"I never miss, and I never forget."',
+    damage: 60,
+    range: 240,
+    fireRate: 0.5,
+    projectileSpeed: 1100,
+    levelDmg: 0.30,
+    levelRange: 0.06,
+    levelRate: 0.04,
+    canSeeStealth: true,
+    ability: {
+      id: 'precision_shot',
+      name: 'Precision Shot',
+      icon: '🎯',
+      desc: 'Mark a target — next 5 shots deal +200% damage to it.',
+      cooldown: 30,
+      unlockLevel: 2,
+    },
+    projKind: 'olive',
+    projectile: '🫒'
+  },
+  {
+    id: 'pepe',
+    name: 'Lil Pepe',
+    title: 'The Pyromaniac',
+    emoji: '🌶️',
+    color: '#e74c3c',
+    desc: 'Tiny but spicy. Splash damage with burn DoT. Every shot lights things on fire.',
+    flavor: '"I will SPICE this up!"',
+    damage: 14,
+    range: 110,
+    fireRate: 1.3,
+    projectileSpeed: 520,
+    splash: 50,
+    levelDmg: 0.18,
+    levelRange: 0.03,
+    levelRate: 0.06,
+    burnOnHit: { dps: 6, duration: 3 },
+    ability: {
+      id: 'volcano',
+      name: 'Volcanic Eruption',
+      icon: '🌋',
+      desc: 'Erupt over 4s — 8 fireballs rain on random enemies dealing 60 dmg + 4s burn.',
+      cooldown: 40,
+      unlockLevel: 2,
+    },
+    projKind: 'pepperoni',
+    projectile: '🌶️'
+  }
+];
+
+// ============== ACTIVE POWERS (Consumables) ==============
+// Gold-purchased one-shot effects. Available in all runs.
+const POWERS = [
+  {
+    id: 'pasta_bomb',
+    name: 'Pasta Bomb',
+    icon: '💣',
+    desc: 'Detonate a massive bomb at cursor — 300 damage in 130px radius. Click to target.',
+    cost: 250,
+    cooldown: 25,
+    targeted: true,
+    radius: 130,
+    damage: 300
+  },
+  {
+    id: 'freeze',
+    name: 'Freeze Frame',
+    icon: '❄️',
+    desc: 'Freeze ALL enemies in place for 3.5 seconds.',
+    cost: 200,
+    cooldown: 30,
+    duration: 3.5
+  },
+  {
+    id: 'pay_day',
+    name: 'Pay Day',
+    icon: '💰',
+    desc: 'Instant +300 gold.',
+    cost: 0,
+    cooldown: 60,
+    gold: 300
+  },
+  {
+    id: 'garlic_bread',
+    name: 'Garlic Bread',
+    icon: '🥖',
+    desc: 'Heal +8 lives (up to max).',
+    cost: 150,
+    cooldown: 40,
+    heal: 8
+  },
+  {
+    id: 'sauce_storm',
+    name: 'Sauce Storm',
+    icon: '🌪️',
+    desc: 'Apply 70% slow to all enemies for 6s + 5s burn DoT.',
+    cost: 300,
+    cooldown: 50,
+    slow: 0.7,
+    slowDur: 6,
+    burnDps: 8,
+    burnDur: 5
+  }
+];
+
+// ============== MID-RUN BOONS ==============
+// Every 5 waves (W5/10/15/20/25), pick 1 of 3 random buffs.
+// Persistent for the rest of the run. Stackable.
+const BOONS = [
+  // OFFENSE
+  { id: 'sharp_knives', name: 'Sharp Knives',     icon: '🔪', tier: 'common',   desc: '+15% damage to all towers',                   effect: { damageMult: 0.15 } },
+  { id: 'piping_hot',   name: 'Piping Hot',       icon: '♨️', tier: 'common',   desc: '+12% fire rate to all towers',                effect: { fireRateMult: 0.12 } },
+  { id: 'long_reach',   name: 'Long Reach',       icon: '🎯', tier: 'common',   desc: '+15% range to all towers',                    effect: { rangeMult: 0.15 } },
+  { id: 'splash_zone',  name: 'Splash Zone',      icon: '💥', tier: 'common',   desc: '+25% splash radius',                          effect: { splashMult: 0.25 } },
+  { id: 'eagle_eye',    name: 'Eagle Eye',        icon: '👁️', tier: 'rare',     desc: '+8% crit chance, +30% crit damage',          effect: { critChance: 0.08, critMult: 0.30 } },
+  { id: 'maestro',      name: 'Maestro\'s Touch', icon: '🎼', tier: 'epic',     desc: '+30% damage but -10% fire rate',              effect: { damageMult: 0.30, fireRateMult: -0.10 } },
+  // ECONOMY
+  { id: 'rich_marinara', name: 'Rich Marinara',  icon: '🍅', tier: 'common',   desc: '+20% gold from kills',                        effect: { goldMult: 0.20 } },
+  { id: 'wholesale',    name: 'Wholesale Deals',  icon: '🛒', tier: 'common',   desc: '-15% tower placement cost',                   effect: { costMult: -0.15 } },
+  { id: 'tip_jar',      name: 'Generous Tips',    icon: '💵', tier: 'rare',     desc: '+15 gold every wave (cumulative)',            effect: { passiveGold: 15 } },
+  { id: 'bounty',       name: 'Bounty Hunter',    icon: '🤠', tier: 'rare',     desc: '+50% gold from bosses',                       effect: { bossGold: 0.50 } },
+  // DEFENSE
+  { id: 'extra_plates', name: 'Extra Plates',     icon: '🍽️', tier: 'common',   desc: '+5 max lives (and heal +5)',                effect: { maxLives: 5 } },
+  { id: 'sticky_sauce', name: 'Sticky Sauce',     icon: '🍯', tier: 'common',   desc: '-8% enemy speed (global slow)',               effect: { enemySpeedMult: -0.08 } },
+  { id: 'iron_skillet', name: 'Iron Skillet',     icon: '🛡️', tier: 'rare',     desc: 'All damage ignores 15% enemy armor',         effect: { armorPierce: 0.15 } },
+  { id: 'last_stand',   name: 'Last Stand',       icon: '⚔️', tier: 'epic',     desc: 'Survive 2 lethal hits per wave',              effect: { lethalShield: 2 } },
+  // UTILITY
+  { id: 'pyromaniac',   name: 'Pyromaniac',       icon: '🔥', tier: 'rare',     desc: 'All shots apply burn (4 dmg/s for 2s)',       effect: { burnOnHit: { dps: 4, duration: 2 } } },
+  { id: 'frostbite',    name: 'Frostbite',        icon: '🧊', tier: 'rare',     desc: 'All shots have 30% chance to stun 0.5s',      effect: { stunChance: 0.30, stunDur: 0.5 } },
+  { id: 'lightning',    name: 'Static Charge',    icon: '⚡', tier: 'rare',     desc: '15% chance per hit to chain to nearby enemy', effect: { chainChance: 0.15 } },
+  { id: 'multishot',    name: 'Double Tap',       icon: '✌️', tier: 'epic',     desc: '20% chance to fire a 2nd projectile',         effect: { multishot: 0.20 } },
+  { id: 'overflow',     name: 'Sauce Overflow',   icon: '🌊', tier: 'epic',     desc: 'Splash on all hits (50px radius)',            effect: { splashOnHit: 50 } },
+  // KEYSTONE
+  { id: 'al_dente',     name: 'AL DENTE',         icon: '🍝', tier: 'legendary', desc: 'KEYSTONE: +40% dmg, +20% rate, +25% range. ONCE PER RUN.', effect: { damageMult: 0.40, fireRateMult: 0.20, rangeMult: 0.25 } },
+  { id: 'sauce_master', name: 'SAUCE MASTER',     icon: '👑', tier: 'legendary', desc: 'KEYSTONE: All gold gain x2 for rest of run. ONCE.',         effect: { goldMult: 1.00 } },
+];
+
 function makeRunState(saveData, mapDef) {
   const perks = saveData.prestigePerks || {};
   const mods = (mapDef && mapDef.mods) || { gold: 1, score: 1, lives: 0, enemyHp: 1, enemySpeed: 1, startGold: 0 };
@@ -838,6 +1048,16 @@ function makeRunState(saveData, mapDef) {
     taunts: [],
     endlessMode: false,
     mapId: (mapDef && mapDef.id) || saveData.selectedMap || 'kitchen',
-    mods: mods
+    mods: mods,
+    // EPIC features
+    heroId: null,            // selected hero id (null = choose at start)
+    heroPlaced: false,       // becomes true once hero is on the board
+    powerCooldowns: {},      // {powerId: timestamp when ready}
+    boons: [],               // array of boon ids picked this run
+    boonKeystonesUsed: [],   // ids of legendary keystones already taken
+    pendingBoonWave: 0,      // wave number that triggered boon choice (0 = none pending)
+    pendingPowerTarget: null, // power id awaiting click target
+    // Status effect / synergy support
+    burnEnemies: [],         // tracked for cleanup if needed
   };
 }
