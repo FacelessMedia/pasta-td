@@ -35,10 +35,28 @@ const Game = {
     this.rows = Math.floor(this.canvas.height / this.cellSize);
     this.generatePath();
 
-    // Input
+    // Input (mouse)
     this.canvas.addEventListener('mousemove', e => this.onMouseMove(e));
     this.canvas.addEventListener('click', e => this.onClick(e));
     this.canvas.addEventListener('mouseleave', () => { this.hoverCell = null; });
+    // Input (touch) — translate to mousemove/click semantics
+    this.canvas.addEventListener('touchstart', e => {
+      if (e.touches.length !== 1) return;
+      e.preventDefault();
+      const t = e.touches[0];
+      this.onMouseMove({ clientX: t.clientX, clientY: t.clientY });
+    }, { passive: false });
+    this.canvas.addEventListener('touchmove', e => {
+      if (e.touches.length !== 1) return;
+      e.preventDefault();
+      const t = e.touches[0];
+      this.onMouseMove({ clientX: t.clientX, clientY: t.clientY });
+    }, { passive: false });
+    this.canvas.addEventListener('touchend', e => {
+      e.preventDefault();
+      const t = e.changedTouches[0];
+      if (t) this.onClick({ clientX: t.clientX, clientY: t.clientY });
+    }, { passive: false });
 
     // Buttons
     UI.el.btnStartWave.addEventListener('click', () => this.startWave());
@@ -357,6 +375,11 @@ const Game = {
 
   damageEnemy(enemy, amount, srcTower) {
     if (enemy.hp <= 0) return;
+    // Dodge: some pasta types shimmy past attacks
+    if (enemy.def && enemy.def.dodge && Math.random() < enemy.def.dodge) {
+      this.state.effects.push({ kind: 'text', text: 'DODGE!', x: enemy.x, y: enemy.y - 22, life: 0.5, vy: -32, color: '#74b9ff' });
+      return;
+    }
     const skills = this.state.skillPoints || {};
     // Crit
     const critChance = this.computeStat('critChance', 0) + (this.save.prestigePerks.critBase || 0) * 0.03;
@@ -409,10 +432,28 @@ const Game = {
     enemy._dead = true;
     // Mark discovered (in case spawn missed it)
     if (this.save.discoveredEnemies) this.save.discoveredEnemies[enemy.type] = true;
-    // Sometimes taunt on kill
-    if (srcTower && Math.random() < 0.18 && srcTower.def.taunts && this.tauntsEnabled()) {
+    // Track per-enemy kill counts for dex depth
+    if (!this.save.enemyKills) this.save.enemyKills = {};
+    this.save.enemyKills[enemy.type] = (this.save.enemyKills[enemy.type] || 0) + 1;
+    // Sometimes taunt on kill (significantly reduced from 0.18 → 0.05)
+    if (srcTower && Math.random() < 0.05 && srcTower.def.taunts && this.tauntsEnabled()) {
       const t = srcTower.def.taunts[Math.floor(Math.random() * srcTower.def.taunts.length)];
       UI.spawnTaunt(t, srcTower.x, srcTower.y - 18);
+    }
+    // SPLITS: pasta that splits into smaller versions on death (gemelli)
+    if (enemy.def && enemy.def.splits && !enemy._wasSplit) {
+      const half = {
+        type: enemy.type, def: enemy.def,
+        x: enemy.x, y: enemy.y,
+        hp: enemy.maxHp * 0.5, maxHp: enemy.maxHp * 0.5,
+        speed: enemy.speed * 1.2, baseSpeed: enemy.baseSpeed * 1.2,
+        progress: enemy.progress, pathDist: enemy.pathDist,
+        segIdx: enemy.segIdx, segT: enemy.segT,
+        armor: enemy.armor, gold: Math.floor(enemy.gold * 0.5),
+        slow: null, scale: (enemy.scale || 1) * 0.75,
+        isBoss: false, dot: null, flashUntil: 0, _wasSplit: true
+      };
+      this.state.enemies.push(half);
     }
     let gold = enemy.gold;
     gold *= this.computeStat('goldMult', 1);
@@ -526,14 +567,19 @@ const Game = {
   },
 
   makeEndlessWave(n) {
-    // Increasingly hard random pool
-    const pool = ['tomato', 'pepperoni', 'olive', 'basil', 'mozzarella', 'parmesan', 'pizza', 'spicyPepper', 'pastaSauce', 'anchovy'];
+    // Increasingly hard random pool from the full pasta endless pool
+    const pool = (typeof ENDLESS_POOL !== 'undefined') ? ENDLESS_POOL :
+      ['spaghetti','penne','fusilli','rigatoni','farfalle','ziti','bucatini','gnocchi','angelHair','conchiglie','marinara'];
     const count = 15 + n * 5;
     const enemies = [];
     for (let i = 0; i < count; i++) {
       enemies.push({ type: pool[Math.floor(Math.random() * pool.length)], count: 1, spacing: 0.4 });
     }
-    if (n % 3 === 0) enemies.push({ type: 'cheeseWheel', count: Math.min(5, Math.floor(n / 3)), spacing: 2.0 });
+    if (n % 3 === 0) {
+      const bossPool = (typeof ENDLESS_BOSSES !== 'undefined') ? ENDLESS_BOSSES : ['radiatori','lasagna'];
+      const bossType = bossPool[Math.floor(Math.random() * bossPool.length)];
+      enemies.push({ type: bossType, count: Math.min(5, Math.floor(n / 3)), spacing: 2.0 });
+    }
     return { enemies, reward: 200 + n * 100, boss: n % 3 === 0 };
   },
 
@@ -983,10 +1029,10 @@ const Game = {
       if (f.life <= 0) fx.splice(i, 1);
     }
 
-    // Taunt timer — periodic random taunts from active towers
+    // Taunt timer — periodic random taunts from active towers (reduced frequency)
     this.tauntTimer -= dt;
     if (this.tauntTimer <= 0) {
-      this.tauntTimer = 3 + Math.random() * 3;
+      this.tauntTimer = 10 + Math.random() * 8;
       this.tryRandomTaunt();
     }
 
@@ -1002,6 +1048,8 @@ const Game = {
   tryRandomTaunt() {
     if (!this.tauntsEnabled()) return;
     if (this.state.enemies.length === 0) return;
+    // Only ~30% of timer ticks actually fire a taunt — keeps chatter rare
+    if (Math.random() > 0.3) return;
     // Pick a tower with at least one enemy in range and taunts
     const candidates = this.state.towers.filter(t => t.def.taunts && t.def.taunts.length > 0);
     if (candidates.length === 0) return;

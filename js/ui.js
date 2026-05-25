@@ -563,35 +563,72 @@ const UI = {
     this.el.marksDisplay.textContent = Game.state.marks;
     this.el.skillTreeGrid.innerHTML = '';
 
-    // Layout coords (percent within branch canvas)
-    const COLS = [15, 50, 85];
-    const TIERS = [14, 38, 62, 90];
+    // RADIAL LAYOUT — one big spider tree with 5 branches occupying wedges.
+    // Each branch's nodes have `angle` (0-72° within wedge) and `radius` (0-100% from center).
+    const container = document.createElement('div');
+    container.className = 'skill-radial';
 
-    Object.entries(SKILL_TREE).forEach(([branchId, branch]) => {
-      const branchDiv = document.createElement('div');
-      branchDiv.className = 'skill-branch ' + branchId;
-      branchDiv.innerHTML = `<h3 style="color:${branch.color}">${branch.name}</h3>`;
+    // SVG layer for connection lines (covers full radial space)
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    svg.classList.add('skill-radial-svg');
+    svg.setAttribute('viewBox', '-100 -100 200 200');
+    svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+    container.appendChild(svg);
 
-      const canvas = document.createElement('div');
-      canvas.className = 'skill-tree-canvas';
-      canvas.style.borderColor = branch.color + '55';
+    // Background rings (visual concentric guides)
+    [22, 42, 60, 76, 92].forEach((r) => {
+      const c = document.createElementNS(SVG_NS, 'circle');
+      c.setAttribute('cx', 0); c.setAttribute('cy', 0); c.setAttribute('r', r);
+      c.setAttribute('class', 'radial-ring');
+      svg.appendChild(c);
+    });
 
-      // SVG layer for connection lines
-      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      svg.classList.add('skill-connections');
-      svg.setAttribute('viewBox', '0 0 100 100');
-      svg.setAttribute('preserveAspectRatio', 'none');
-      canvas.appendChild(svg);
+    // Wedge dividers
+    const branchIds = Object.keys(SKILL_TREE);
+    branchIds.forEach((bid) => {
+      const branch = SKILL_TREE[bid];
+      const [start] = branch.wedge;
+      const a = (start - 90) * Math.PI / 180;
+      const line = document.createElementNS(SVG_NS, 'line');
+      line.setAttribute('x1', 0); line.setAttribute('y1', 0);
+      line.setAttribute('x2', Math.cos(a) * 95);
+      line.setAttribute('y2', Math.sin(a) * 95);
+      line.setAttribute('class', 'radial-wedge-divider');
+      svg.appendChild(line);
+      // Branch label arc text
+      const midA = (branch.wedge[0] + branch.wedge[1]) / 2;
+      const labelA = (midA - 90) * Math.PI / 180;
+      const tx = Math.cos(labelA) * 105;
+      const ty = Math.sin(labelA) * 105;
+      const text = document.createElementNS(SVG_NS, 'text');
+      text.setAttribute('x', tx); text.setAttribute('y', ty);
+      text.setAttribute('class', 'radial-branch-label');
+      text.setAttribute('fill', branch.color);
+      text.setAttribute('text-anchor', 'middle');
+      text.setAttribute('dominant-baseline', 'middle');
+      text.textContent = branch.name;
+      svg.appendChild(text);
+    });
 
-      // Helper to compute node position by id
-      const nodeMap = {};
-      branch.nodes.forEach(n => { nodeMap[n.id] = n; });
-      const posOf = (n) => ({
-        x: COLS[n.col !== undefined ? n.col : 1],
-        y: TIERS[(n.tier || 1) - 1]
-      });
+    // Compute pos for any node by branch wedge + angle/radius
+    const nodeMap = {}; // id -> node
+    const branchOfNode = {}; // id -> branchId
+    Object.entries(SKILL_TREE).forEach(([bid, branch]) => {
+      branch.nodes.forEach(n => { nodeMap[n.id] = n; branchOfNode[n.id] = bid; });
+    });
+    function posOf(node) {
+      const branch = SKILL_TREE[branchOfNode[node.id]];
+      const wedgeStart = branch.wedge[0];
+      const wedgeSize = branch.wedge[1] - wedgeStart;
+      // node.angle is 0-72 within wedge
+      const angleDeg = wedgeStart + (node.angle / 72) * wedgeSize - 90;
+      const a = angleDeg * Math.PI / 180;
+      return { x: Math.cos(a) * node.radius, y: Math.sin(a) * node.radius, angleDeg, branch };
+    }
 
-      // Draw connection lines
+    // Draw connection lines first
+    Object.values(SKILL_TREE).forEach(branch => {
       branch.nodes.forEach(node => {
         (node.requires || []).forEach(req => {
           const parent = nodeMap[req.id];
@@ -600,25 +637,37 @@ const UI = {
           const c = posOf(node);
           const parentLvl = Game.state.skillPoints[req.id] || 0;
           const active = parentLvl >= req.lvl;
-          const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-          line.setAttribute('x1', p.x);
-          line.setAttribute('y1', p.y);
-          line.setAttribute('x2', c.x);
-          line.setAttribute('y2', c.y);
+          const line = document.createElementNS(SVG_NS, 'line');
+          line.setAttribute('x1', p.x); line.setAttribute('y1', p.y);
+          line.setAttribute('x2', c.x); line.setAttribute('y2', c.y);
           line.setAttribute('stroke', active ? branch.color : '#3a2a1e');
-          line.setAttribute('stroke-width', active ? '0.8' : '0.5');
-          line.setAttribute('stroke-dasharray', active ? '' : '2 1.5');
-          line.setAttribute('opacity', active ? '0.9' : '0.55');
+          line.setAttribute('stroke-width', active ? 0.8 : 0.4);
+          line.setAttribute('stroke-dasharray', active ? '' : '1.5 1');
+          line.setAttribute('opacity', active ? 0.9 : 0.45);
           svg.appendChild(line);
         });
       });
+    });
 
-      // Render nodes (absolutely positioned)
+    // Center hub
+    const hub = document.createElementNS(SVG_NS, 'circle');
+    hub.setAttribute('cx', 0); hub.setAttribute('cy', 0); hub.setAttribute('r', 10);
+    hub.setAttribute('class', 'radial-hub');
+    svg.appendChild(hub);
+    const hubText = document.createElementNS(SVG_NS, 'text');
+    hubText.setAttribute('x', 0); hubText.setAttribute('y', 0);
+    hubText.setAttribute('class', 'radial-hub-label');
+    hubText.setAttribute('text-anchor', 'middle');
+    hubText.setAttribute('dominant-baseline', 'middle');
+    hubText.textContent = '🍝';
+    svg.appendChild(hubText);
+
+    // Render nodes as absolutely-positioned DOM elements on top of the SVG
+    Object.entries(SKILL_TREE).forEach(([bid, branch]) => {
       branch.nodes.forEach(node => {
         const lvl = Game.state.skillPoints[node.id] || 0;
         const maxed = lvl >= node.max;
         const cost = !maxed ? node.costs[lvl] : 0;
-        // Check prereqs
         const prereqMet = (node.requires || []).every(req => (Game.state.skillPoints[req.id] || 0) >= req.lvl);
         const canAfford = !maxed && Game.state.marks >= cost;
         const available = prereqMet && !maxed;
@@ -626,41 +675,44 @@ const UI = {
         const locked = !prereqMet && !maxed;
         const pos = posOf(node);
         const nodeDiv = document.createElement('div');
-        nodeDiv.className = 'skill-node' + (maxed ? ' maxed' : '') + (locked ? ' locked' : '') + (buyable ? ' buyable' : '') + (node.keystone ? ' keystone' : '') + (available && !canAfford && !maxed ? ' poor' : '');
-        nodeDiv.style.left = pos.x + '%';
-        nodeDiv.style.top = pos.y + '%';
-        if (node.keystone) nodeDiv.style.borderColor = branch.color;
-
-        // Tooltip-style content
+        nodeDiv.className = 'skill-node-radial' + (maxed ? ' maxed' : '') + (locked ? ' locked' : '') + (buyable ? ' buyable' : '') + (node.keystone ? ' keystone' : '') + (available && !canAfford && !maxed ? ' poor' : '');
+        // Convert SVG coord to % (range -100..100 → 0..100%)
+        const left = ((pos.x + 100) / 200) * 100;
+        const top = ((pos.y + 100) / 200) * 100;
+        nodeDiv.style.left = left + '%';
+        nodeDiv.style.top = top + '%';
+        if (node.keystone) {
+          nodeDiv.style.borderColor = branch.color;
+          nodeDiv.style.boxShadow = `0 0 14px ${branch.color}`;
+        } else if (lvl > 0) {
+          nodeDiv.style.borderColor = branch.color;
+        }
         const lockMsg = locked
-          ? `🔒 Requires: ${(node.requires||[]).map(r => `${nodeMap[r.id].name} Lv${r.lvl}`).join(', ')}`
+          ? `🔒 Requires: ${(node.requires||[]).map(r => `${nodeMap[r.id]?.name || r.id} Lv${r.lvl}`).join(', ')}`
           : '';
         const costLabel = maxed ? '✓ MAX' : (locked ? '🔒' : `🥫${cost}`);
-        const initial = node.keystone ? '★' : node.name.charAt(0);
-
+        const icon = node.keystone ? '★' : (node.name.match(/[A-Z]/) || ['•'])[0];
         nodeDiv.innerHTML = `
-          <div class="sn-emoji">${initial}</div>
-          <div class="sn-lvl">${lvl}/${node.max}</div>
-          <div class="sn-tooltip">
-            <div class="sn-title">${node.name}</div>
-            <div class="sn-desc">${node.desc}</div>
-            <div class="sn-stats">Lv ${lvl}/${node.max} <span class="sep">·</span> Cost ${costLabel}</div>
-            ${lockMsg ? `<div class="sn-lock">${lockMsg}</div>` : ''}
+          <div class="snr-icon">${icon}</div>
+          <div class="snr-lvl">${lvl}/${node.max}</div>
+          <div class="snr-tooltip">
+            <div class="snr-title" style="color:${branch.color}">${node.name}</div>
+            <div class="snr-desc">${node.desc}</div>
+            <div class="snr-stats">Lv ${lvl}/${node.max} <span class="sep">·</span> Cost ${costLabel}</div>
+            ${lockMsg ? `<div class="snr-lock">${lockMsg}</div>` : ''}
           </div>
         `;
-
         if (buyable) {
           nodeDiv.addEventListener('click', () => {
-            Game.buySkill(branchId, node.id);
+            Game.buySkill(bid, node.id);
             this.renderSkillTree();
           });
         }
-        canvas.appendChild(nodeDiv);
+        container.appendChild(nodeDiv);
       });
-
-      branchDiv.appendChild(canvas);
-      this.el.skillTreeGrid.appendChild(branchDiv);
     });
+
+    this.el.skillTreeGrid.appendChild(container);
   },
 
   // ===== PRESTIGE =====

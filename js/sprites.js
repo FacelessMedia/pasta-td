@@ -184,6 +184,37 @@ const Sprites = {
     }
   },
 
+  // ============ PASTA HELPERS (shared geometry) ============
+  _pastaShade(ctx, color, r) {
+    // Returns a radial gradient suited for pasta dough (golden core, browned edges)
+    const g = ctx.createRadialGradient(-r*0.3, -r*0.35, r*0.1, 0, 0, r);
+    g.addColorStop(0, this._tint(color, 0.35));
+    g.addColorStop(0.55, color);
+    g.addColorStop(1, this._tint(color, -0.4));
+    return g;
+  },
+  _tint(hex, amt) {
+    // Lighten (amt > 0) or darken (amt < 0) a #rrggbb color
+    const c = hex.replace('#','');
+    const r = parseInt(c.slice(0,2),16), g = parseInt(c.slice(2,4),16), b = parseInt(c.slice(4,6),16);
+    const f = amt < 0 ? (1 + amt) : 1;
+    const o = amt > 0 ? amt * 255 : 0;
+    const clamp = v => Math.max(0, Math.min(255, Math.round(v * f + o)));
+    return `rgb(${clamp(r)},${clamp(g)},${clamp(b)})`;
+  },
+  _ridges(ctx, x, y, w, h, count, color) {
+    // Draw vertical ridge lines (for ridged pasta)
+    ctx.strokeStyle = color || 'rgba(0,0,0,0.25)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < count; i++) {
+      const lx = x + (w * (i + 1)) / (count + 1);
+      ctx.beginPath();
+      ctx.moveTo(lx, y);
+      ctx.lineTo(lx, y + h);
+      ctx.stroke();
+    }
+  },
+
   // ============ ENEMY DRAWERS ============
   enemyDrawers: {
     _default(ctx, def, s) {
@@ -710,6 +741,828 @@ const Sprites = {
       ctx.shadowBlur = 0;
     },
 
+    // ============ NEW PASTA-TYPE ENEMIES ============
+    // Aliases (reuse existing visuals where appropriate)
+    spaghetti(ctx, def, s, time) { Sprites.enemyDrawers.garlic.call(this, ctx, def, s, time); },
+    arrabbiata(ctx, def, s, time) { Sprites.enemyDrawers.spicyPepper.call(this, ctx, def, s, time); },
+    marinara(ctx, def, s, time) { Sprites.enemyDrawers.pastaSauce.call(this, ctx, def, s, time); },
+
+    // Penne — angled-cut tube. Diagonal slice on both ends.
+    penne(ctx, def, s, time) {
+      const r = s/2;
+      ctx.save();
+      ctx.rotate(0.3);
+      const g = ctx.createLinearGradient(-r*0.6, 0, r*0.6, 0);
+      g.addColorStop(0, Sprites._tint(def.color, 0.3));
+      g.addColorStop(0.5, def.color);
+      g.addColorStop(1, Sprites._tint(def.color, -0.3));
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.moveTo(-r*0.7, -r*0.4);
+      ctx.lineTo(r*0.4, -r*0.55);
+      ctx.lineTo(r*0.7, r*0.4);
+      ctx.lineTo(-r*0.4, r*0.55);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = Sprites._tint(def.color, -0.5); ctx.lineWidth = 1.5;
+      ctx.stroke();
+      // Ridges
+      ctx.strokeStyle = 'rgba(0,0,0,0.22)'; ctx.lineWidth = 1;
+      for (let i = -2; i <= 2; i++) {
+        ctx.beginPath();
+        ctx.moveTo(i*r*0.18, -r*0.5);
+        ctx.lineTo(i*r*0.18 + r*0.05, r*0.5);
+        ctx.stroke();
+      }
+      // Hollow openings (ellipses on the cut ends)
+      ctx.fillStyle = Sprites._tint(def.color, -0.6);
+      ctx.beginPath(); ctx.ellipse(-r*0.55, r*0.07, r*0.1, r*0.4, -0.3, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(r*0.55, -r*0.07, r*0.1, r*0.4, -0.3, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
+      Sprites._eyes(ctx, s*0.7, 'angry');
+    },
+
+    // Orzo — rice-grain cluster (multiple little grains)
+    orzo(ctx, def, s, time) {
+      const r = s/2;
+      // Cluster of 6 grain shapes
+      const positions = [[-0.3,-0.2,-0.4],[0.2,-0.25,0.3],[-0.35,0.15,0.2],[0.3,0.1,-0.5],[0,0.3,0.1],[-0.05,-0.4,0]];
+      positions.forEach(([px,py,rot])=>{
+        ctx.save();
+        ctx.translate(px*r, py*r);
+        ctx.rotate(rot);
+        const g = ctx.createLinearGradient(0, -r*0.18, 0, r*0.18);
+        g.addColorStop(0, Sprites._tint(def.color, 0.2));
+        g.addColorStop(1, Sprites._tint(def.color, -0.3));
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, r*0.32, r*0.13, 0, 0, Math.PI*2);
+        ctx.fill();
+        ctx.strokeStyle = Sprites._tint(def.color, -0.5); ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.restore();
+      });
+      // One tiny pair of eyes on the central grain
+      ctx.save(); ctx.scale(0.5, 0.5);
+      Sprites._eyes(ctx, s, 'mean');
+      ctx.restore();
+    },
+
+    // Fusilli — corkscrew spiral
+    fusilli(ctx, def, s, time) {
+      const r = s/2;
+      const spin = time * 2;
+      ctx.save();
+      ctx.rotate(spin * 0.3);
+      // Body — vertical curl
+      ctx.strokeStyle = def.color;
+      ctx.lineWidth = r * 0.35;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      for (let t = 0; t <= 1; t += 0.05) {
+        const y = (t - 0.5) * r * 1.6;
+        const x = Math.sin(t * Math.PI * 5 + spin) * r * 0.45;
+        if (t === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      // Highlight
+      ctx.strokeStyle = Sprites._tint(def.color, 0.35);
+      ctx.lineWidth = r * 0.1;
+      ctx.beginPath();
+      for (let t = 0; t <= 1; t += 0.05) {
+        const y = (t - 0.5) * r * 1.6;
+        const x = Math.sin(t * Math.PI * 5 + spin) * r * 0.45 - r*0.1;
+        if (t === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      // Dark center groove
+      ctx.strokeStyle = Sprites._tint(def.color, -0.45);
+      ctx.lineWidth = r * 0.08;
+      ctx.beginPath();
+      for (let t = 0; t <= 1; t += 0.05) {
+        const y = (t - 0.5) * r * 1.6;
+        const x = Math.sin(t * Math.PI * 5 + spin) * r * 0.45;
+        if (t === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.restore();
+      // Eyes (crazy)
+      Sprites._eyes(ctx, s*0.6, 'crazy');
+    },
+
+    // Rigatoni — ridged tube (horizontal)
+    rigatoni(ctx, def, s, time) {
+      const r = s/2;
+      ctx.save();
+      ctx.rotate(0.1);
+      // Tube body
+      const g = ctx.createLinearGradient(0, -r*0.5, 0, r*0.5);
+      g.addColorStop(0, Sprites._tint(def.color, 0.3));
+      g.addColorStop(0.5, def.color);
+      g.addColorStop(1, Sprites._tint(def.color, -0.35));
+      ctx.fillStyle = g;
+      Sprites._roundedRect(ctx, -r*0.85, -r*0.45, r*1.7, r*0.9, r*0.12);
+      ctx.fill();
+      ctx.strokeStyle = Sprites._tint(def.color, -0.5); ctx.lineWidth = 1.5;
+      Sprites._roundedRect(ctx, -r*0.85, -r*0.45, r*1.7, r*0.9, r*0.12);
+      ctx.stroke();
+      // Vertical ridges
+      Sprites._ridges(ctx, -r*0.85, -r*0.45, r*1.7, r*0.9, 7, 'rgba(0,0,0,0.3)');
+      // Hollow ends
+      ctx.fillStyle = Sprites._tint(def.color, -0.55);
+      ctx.beginPath(); ctx.ellipse(-r*0.8, 0, r*0.08, r*0.35, 0, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(r*0.8, 0, r*0.08, r*0.35, 0, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
+      Sprites._eyes(ctx, s*0.7, 'angry');
+    },
+
+    // Ziti — smooth straight tube (like rigatoni but no ridges)
+    ziti(ctx, def, s, time) {
+      const r = s/2;
+      ctx.save();
+      ctx.rotate(0.05);
+      const g = ctx.createLinearGradient(0, -r*0.5, 0, r*0.5);
+      g.addColorStop(0, Sprites._tint(def.color, 0.35));
+      g.addColorStop(0.5, def.color);
+      g.addColorStop(1, Sprites._tint(def.color, -0.35));
+      ctx.fillStyle = g;
+      Sprites._roundedRect(ctx, -r*0.85, -r*0.4, r*1.7, r*0.8, r*0.18);
+      ctx.fill();
+      ctx.strokeStyle = Sprites._tint(def.color, -0.5); ctx.lineWidth = 1.5;
+      Sprites._roundedRect(ctx, -r*0.85, -r*0.4, r*1.7, r*0.8, r*0.18);
+      ctx.stroke();
+      // Highlight stripe
+      ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(-r*0.65, -r*0.22); ctx.lineTo(r*0.65, -r*0.22);
+      ctx.stroke();
+      // Hollow ends
+      ctx.fillStyle = Sprites._tint(def.color, -0.55);
+      ctx.beginPath(); ctx.ellipse(-r*0.8, 0, r*0.08, r*0.3, 0, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(r*0.8, 0, r*0.08, r*0.3, 0, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
+      Sprites._eyes(ctx, s*0.7, 'mean');
+    },
+
+    // Bucatini — long thin hollow strands (bundle of 3)
+    bucatini(ctx, def, s, time) {
+      const r = s/2;
+      const wob = Math.sin(time*5) * 0.06;
+      ctx.save();
+      ctx.rotate(wob);
+      // 3 long thin tubes
+      [-0.25, 0, 0.25].forEach(yOff => {
+        ctx.save();
+        ctx.translate(0, yOff * r);
+        const g = ctx.createLinearGradient(0, -r*0.12, 0, r*0.12);
+        g.addColorStop(0, Sprites._tint(def.color, 0.3));
+        g.addColorStop(0.5, def.color);
+        g.addColorStop(1, Sprites._tint(def.color, -0.3));
+        ctx.fillStyle = g;
+        Sprites._roundedRect(ctx, -r*0.95, -r*0.12, r*1.9, r*0.24, r*0.06);
+        ctx.fill();
+        ctx.strokeStyle = Sprites._tint(def.color, -0.5); ctx.lineWidth = 1;
+        ctx.stroke();
+        // Center hole (dark line)
+        ctx.strokeStyle = Sprites._tint(def.color, -0.6); ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(-r*0.85, 0); ctx.lineTo(r*0.85, 0); ctx.stroke();
+        ctx.restore();
+      });
+      ctx.restore();
+      // Eyes on the front
+      ctx.save(); ctx.translate(-r*0.4, 0); ctx.scale(0.6, 0.6);
+      Sprites._eyes(ctx, s, 'mean');
+      ctx.restore();
+    },
+
+    // Fettuccine — flat ribbon
+    fettuccine(ctx, def, s, time) {
+      const r = s/2;
+      ctx.save();
+      ctx.rotate(Math.sin(time*3) * 0.08);
+      // 3 horizontal wavy ribbons
+      [-0.3, 0, 0.3].forEach((yOff, i) => {
+        ctx.save();
+        ctx.translate(0, yOff * r);
+        const g = ctx.createLinearGradient(0, -r*0.18, 0, r*0.18);
+        g.addColorStop(0, Sprites._tint(def.color, 0.3));
+        g.addColorStop(0.5, def.color);
+        g.addColorStop(1, Sprites._tint(def.color, -0.3));
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        const waveOff = Math.sin(time*4 + i)*r*0.05;
+        ctx.moveTo(-r*0.9, -r*0.16 + waveOff);
+        ctx.bezierCurveTo(-r*0.4, -r*0.16 - waveOff, r*0.4, -r*0.16 + waveOff, r*0.9, -r*0.16 - waveOff);
+        ctx.lineTo(r*0.9, r*0.16 - waveOff);
+        ctx.bezierCurveTo(r*0.4, r*0.16 + waveOff, -r*0.4, r*0.16 - waveOff, -r*0.9, r*0.16 + waveOff);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = Sprites._tint(def.color, -0.5); ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.restore();
+      });
+      ctx.restore();
+      Sprites._eyes(ctx, s*0.6, 'mean');
+    },
+
+    // Ravioli — square pillow with crimped edges
+    ravioli(ctx, def, s, time) {
+      const r = s/2;
+      // Pillow body
+      const g = ctx.createRadialGradient(-r*0.2, -r*0.25, r*0.1, 0, 0, r);
+      g.addColorStop(0, Sprites._tint(def.color, 0.4));
+      g.addColorStop(0.6, def.color);
+      g.addColorStop(1, Sprites._tint(def.color, -0.35));
+      ctx.fillStyle = g;
+      // Rounded square shape
+      Sprites._roundedRect(ctx, -r*0.85, -r*0.85, r*1.7, r*1.7, r*0.18);
+      ctx.fill();
+      ctx.strokeStyle = Sprites._tint(def.color, -0.5); ctx.lineWidth = 1.5;
+      ctx.stroke();
+      // Crimped edge dots all around
+      ctx.fillStyle = Sprites._tint(def.color, -0.4);
+      for (let i = 0; i < 12; i++) {
+        const t = i / 12;
+        const a = t * Math.PI * 2;
+        const x = Math.cos(a) * r * 0.78;
+        const y = Math.sin(a) * r * 0.78;
+        ctx.beginPath(); ctx.arc(x, y, r*0.08, 0, Math.PI*2); ctx.fill();
+      }
+      // Center filling bump (lighter)
+      ctx.fillStyle = Sprites._tint(def.color, 0.2);
+      ctx.beginPath(); ctx.ellipse(0, 0, r*0.4, r*0.35, 0, 0, Math.PI*2); ctx.fill();
+      // Eyes
+      Sprites._eyes(ctx, s*0.85, 'angry');
+    },
+
+    // Farfalle — bow-tie / butterfly shape
+    farfalle(ctx, def, s, time) {
+      const r = s/2;
+      const flap = Math.sin(time*6) * 0.08;
+      ctx.save();
+      const g = ctx.createLinearGradient(-r, 0, r, 0);
+      g.addColorStop(0, Sprites._tint(def.color, -0.3));
+      g.addColorStop(0.5, Sprites._tint(def.color, 0.3));
+      g.addColorStop(1, Sprites._tint(def.color, -0.3));
+      ctx.fillStyle = g;
+      // Left wing
+      ctx.save(); ctx.rotate(-flap);
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.bezierCurveTo(-r*0.5, -r*0.8, -r*0.95, -r*0.7, -r*0.95, 0);
+      ctx.bezierCurveTo(-r*0.95, r*0.7, -r*0.5, r*0.8, 0, 0);
+      ctx.fill();
+      ctx.strokeStyle = Sprites._tint(def.color, -0.5); ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
+      // Right wing
+      ctx.save(); ctx.rotate(flap);
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.bezierCurveTo(r*0.5, -r*0.8, r*0.95, -r*0.7, r*0.95, 0);
+      ctx.bezierCurveTo(r*0.95, r*0.7, r*0.5, r*0.8, 0, 0);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+      // Pinch center
+      ctx.fillStyle = Sprites._tint(def.color, -0.4);
+      Sprites._roundedRect(ctx, -r*0.12, -r*0.35, r*0.24, r*0.7, r*0.05);
+      ctx.fill();
+      // Crinkles on wings
+      ctx.strokeStyle = 'rgba(0,0,0,0.2)'; ctx.lineWidth = 1;
+      [-1, 1].forEach(sx => {
+        for (let i = 0; i < 3; i++) {
+          ctx.beginPath();
+          ctx.moveTo(sx * r*0.25, -r*0.3 + i*r*0.3);
+          ctx.lineTo(sx * r*0.85, -r*0.3 + i*r*0.3);
+          ctx.stroke();
+        }
+      });
+      ctx.restore();
+      Sprites._eyes(ctx, s*0.55, 'mean');
+    },
+
+    // Tortellini — ring shape (belly-button pasta)
+    tortellini(ctx, def, s, time) {
+      const r = s/2;
+      // Outer ring body
+      const g = ctx.createRadialGradient(0, 0, r*0.45, 0, 0, r);
+      g.addColorStop(0, Sprites._tint(def.color, -0.3));
+      g.addColorStop(0.45, def.color);
+      g.addColorStop(1, Sprites._tint(def.color, -0.3));
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(0, 0, r*0.95, 0, Math.PI*2);
+      ctx.arc(0, 0, r*0.35, 0, Math.PI*2, true);
+      ctx.fill('evenodd');
+      // Outer rim
+      ctx.strokeStyle = Sprites._tint(def.color, -0.5); ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(0, 0, r*0.95, 0, Math.PI*2); ctx.stroke();
+      // Inner rim
+      ctx.beginPath(); ctx.arc(0, 0, r*0.35, 0, Math.PI*2); ctx.stroke();
+      // Crimps along outer edge
+      ctx.fillStyle = Sprites._tint(def.color, -0.4);
+      for (let i = 0; i < 16; i++) {
+        const a = (i/16) * Math.PI*2;
+        const x = Math.cos(a) * r * 0.88;
+        const y = Math.sin(a) * r * 0.88;
+        ctx.beginPath(); ctx.arc(x, y, r*0.06, 0, Math.PI*2); ctx.fill();
+      }
+      // Eyes (inside the ring)
+      ctx.save(); ctx.scale(0.5, 0.5);
+      Sprites._eyes(ctx, s, 'crazy');
+      ctx.restore();
+    },
+
+    // Gnocchi — soft potato dumpling with fork-press marks
+    gnocchi(ctx, def, s, time) {
+      const r = s/2;
+      // Plump rounded shape
+      const g = ctx.createRadialGradient(-r*0.25, -r*0.3, r*0.1, 0, 0, r);
+      g.addColorStop(0, Sprites._tint(def.color, 0.3));
+      g.addColorStop(0.7, def.color);
+      g.addColorStop(1, Sprites._tint(def.color, -0.25));
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, r*0.85, r*0.95, 0, 0, Math.PI*2);
+      ctx.fill();
+      ctx.strokeStyle = Sprites._tint(def.color, -0.45); ctx.lineWidth = 1.5;
+      ctx.stroke();
+      // Fork press lines (4 horizontal grooves)
+      ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 1.5;
+      for (let i = 0; i < 4; i++) {
+        const y = -r*0.4 + i * r*0.27;
+        ctx.beginPath();
+        ctx.moveTo(-r*0.5, y); ctx.lineTo(r*0.5, y);
+        ctx.stroke();
+      }
+      // Shine
+      Sprites._shine(ctx, -r*0.3, -r*0.4, r*0.2, r*0.1);
+      Sprites._eyes(ctx, s*0.85, 'mean');
+    },
+
+    // Angel Hair — thin strand bundle, fast and wispy
+    angelHair(ctx, def, s, time) {
+      const r = s/2;
+      const wob = time * 4;
+      // Many thin parallel strands
+      ctx.strokeStyle = def.color; ctx.lineWidth = 1.5; ctx.lineCap = 'round';
+      for (let i = -4; i <= 4; i++) {
+        const off = i * r * 0.1;
+        ctx.beginPath();
+        ctx.moveTo(-r*0.9, off + Math.sin(wob)*r*0.05);
+        ctx.bezierCurveTo(-r*0.3, off + Math.sin(wob+i)*r*0.15, r*0.3, off + Math.cos(wob+i)*r*0.15, r*0.9, off + Math.cos(wob)*r*0.05);
+        ctx.stroke();
+      }
+      // Speed streaks
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 1;
+      for (let i = 0; i < 4; i++) {
+        ctx.beginPath();
+        ctx.moveTo(r*0.95, -r*0.3 + i*r*0.2);
+        ctx.lineTo(r*1.2, -r*0.3 + i*r*0.2);
+        ctx.stroke();
+      }
+      // Tiny eye on the front
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(-r*0.55, -r*0.1, r*0.1, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#111';
+      ctx.beginPath(); ctx.arc(-r*0.58, -r*0.1, r*0.05, 0, Math.PI*2); ctx.fill();
+    },
+
+    // Pappardelle — extra-wide ribbon (similar to fettuccine but bigger)
+    pappardelle(ctx, def, s, time) {
+      const r = s/2;
+      ctx.save();
+      ctx.rotate(Math.sin(time*2) * 0.05);
+      const g = ctx.createLinearGradient(0, -r, 0, r);
+      g.addColorStop(0, Sprites._tint(def.color, 0.35));
+      g.addColorStop(0.5, def.color);
+      g.addColorStop(1, Sprites._tint(def.color, -0.3));
+      ctx.fillStyle = g;
+      // One big wide wavy ribbon
+      ctx.beginPath();
+      const wOff = Math.sin(time*3)*r*0.1;
+      ctx.moveTo(-r*0.95, -r*0.7 + wOff);
+      ctx.bezierCurveTo(-r*0.3, -r*0.7 - wOff, r*0.3, -r*0.7 + wOff, r*0.95, -r*0.7 - wOff);
+      ctx.lineTo(r*0.95, r*0.7 - wOff);
+      ctx.bezierCurveTo(r*0.3, r*0.7 + wOff, -r*0.3, r*0.7 - wOff, -r*0.95, r*0.7 + wOff);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = Sprites._tint(def.color, -0.5); ctx.lineWidth = 1.5;
+      ctx.stroke();
+      // Surface texture lines
+      ctx.strokeStyle = 'rgba(0,0,0,0.18)'; ctx.lineWidth = 1;
+      for (let i = -2; i <= 2; i++) {
+        ctx.beginPath();
+        ctx.moveTo(-r*0.85, i*r*0.25);
+        ctx.bezierCurveTo(-r*0.3, i*r*0.25 + wOff*0.5, r*0.3, i*r*0.25 - wOff*0.5, r*0.85, i*r*0.25);
+        ctx.stroke();
+      }
+      ctx.restore();
+      Sprites._eyes(ctx, s*0.7, 'angry');
+    },
+
+    // Conchiglie — shell pasta
+    conchiglie(ctx, def, s, time) {
+      const r = s/2;
+      // Shell body
+      const g = ctx.createRadialGradient(-r*0.3, -r*0.3, r*0.1, 0, 0, r);
+      g.addColorStop(0, Sprites._tint(def.color, 0.35));
+      g.addColorStop(0.6, def.color);
+      g.addColorStop(1, Sprites._tint(def.color, -0.4));
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      // Curled shell shape
+      ctx.moveTo(-r*0.7, r*0.6);
+      ctx.bezierCurveTo(-r, -r*0.4, -r*0.3, -r*0.95, r*0.4, -r*0.85);
+      ctx.bezierCurveTo(r*0.95, -r*0.6, r*0.95, r*0.3, r*0.7, r*0.7);
+      ctx.bezierCurveTo(r*0.3, r*0.9, -r*0.3, r*0.85, -r*0.7, r*0.6);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = Sprites._tint(def.color, -0.55); ctx.lineWidth = 1.5;
+      ctx.stroke();
+      // Ridges fanning out from a point
+      ctx.strokeStyle = Sprites._tint(def.color, -0.4); ctx.lineWidth = 1.5;
+      for (let i = 0; i < 7; i++) {
+        const a = -Math.PI * 0.5 + (i - 3) * 0.3;
+        ctx.beginPath();
+        ctx.moveTo(-r*0.4, r*0.5);
+        ctx.quadraticCurveTo(Math.cos(a)*r*0.1, Math.sin(a)*r*0.1, Math.cos(a)*r*0.8, Math.sin(a)*r*0.7);
+        ctx.stroke();
+      }
+      // Hollow opening (dark)
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.beginPath();
+      ctx.ellipse(0, r*0.55, r*0.45, r*0.18, 0, 0, Math.PI*2);
+      ctx.fill();
+      // Eyes inside
+      ctx.save(); ctx.translate(0, -r*0.1); ctx.scale(0.7, 0.7);
+      Sprites._eyes(ctx, s, 'mean');
+      ctx.restore();
+      // Armor glint
+      ctx.fillStyle = 'rgba(255,255,255,0.65)';
+      ctx.beginPath(); ctx.moveTo(0, -r*0.7); ctx.lineTo(r*0.08, -r*0.5); ctx.lineTo(-r*0.05, -r*0.5); ctx.closePath(); ctx.fill();
+    },
+
+    // Cannelloni — large stuffed tube, mini-boss
+    cannelloni(ctx, def, s, time) {
+      const r = s/2;
+      // Big tube
+      const g = ctx.createLinearGradient(0, -r*0.5, 0, r*0.5);
+      g.addColorStop(0, Sprites._tint(def.color, 0.3));
+      g.addColorStop(0.5, def.color);
+      g.addColorStop(1, Sprites._tint(def.color, -0.35));
+      ctx.fillStyle = g;
+      Sprites._roundedRect(ctx, -r*0.95, -r*0.5, r*1.9, r*1.0, r*0.18);
+      ctx.fill();
+      ctx.strokeStyle = Sprites._tint(def.color, -0.5); ctx.lineWidth = 2;
+      Sprites._roundedRect(ctx, -r*0.95, -r*0.5, r*1.9, r*1.0, r*0.18);
+      ctx.stroke();
+      // Visible stuffing bulge on top (lighter)
+      ctx.fillStyle = '#fff5e6';
+      ctx.beginPath();
+      ctx.ellipse(0, -r*0.45, r*0.7, r*0.15, 0, 0, Math.PI*2);
+      ctx.fill();
+      ctx.strokeStyle = '#c9a373'; ctx.lineWidth = 1;
+      ctx.stroke();
+      // Ricotta spots
+      ctx.fillStyle = '#fff';
+      [[-0.3,-0.45,0.04],[0,-0.42,0.05],[0.3,-0.45,0.04]].forEach(([fx,fy,fr])=>{
+        ctx.beginPath(); ctx.arc(fx*r, fy*r, fr*r, 0, Math.PI*2); ctx.fill();
+      });
+      // Hollow ends
+      ctx.fillStyle = Sprites._tint(def.color, -0.55);
+      ctx.beginPath(); ctx.ellipse(-r*0.9, 0, r*0.08, r*0.35, 0, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(r*0.9, 0, r*0.08, r*0.35, 0, 0, Math.PI*2); ctx.fill();
+      Sprites._eyes(ctx, s*0.7, 'angry');
+    },
+
+    // Manicotti — like cannelloni but with crepe wrap
+    manicotti(ctx, def, s, time) {
+      Sprites.enemyDrawers.cannelloni.call(this, ctx, def, s, time);
+      const r = s/2;
+      // Add a crepe wrap pattern (cross-hatch)
+      ctx.strokeStyle = 'rgba(0,0,0,0.18)'; ctx.lineWidth = 1;
+      for (let i = -2; i <= 2; i++) {
+        ctx.beginPath(); ctx.moveTo(i*r*0.35, -r*0.5); ctx.lineTo(i*r*0.35 + r*0.2, r*0.5); ctx.stroke();
+      }
+    },
+
+    // Radiatori — gear / radiator-shaped boss
+    radiatori(ctx, def, s, time) {
+      const r = s/2;
+      // Rotating ridged exterior
+      ctx.save();
+      ctx.rotate(time * 0.6);
+      ctx.fillStyle = Sprites._tint(def.color, -0.3);
+      const teeth = 10;
+      ctx.beginPath();
+      for (let i = 0; i < teeth; i++) {
+        const a = (i / teeth) * Math.PI * 2;
+        const a2 = ((i + 0.5) / teeth) * Math.PI * 2;
+        ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+        ctx.lineTo(Math.cos(a2) * r * 0.7, Math.sin(a2) * r * 0.7);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = '#3a1c08'; ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.restore();
+      // Inner disc
+      const g = ctx.createRadialGradient(0, 0, r*0.1, 0, 0, r*0.7);
+      g.addColorStop(0, Sprites._tint(def.color, 0.4));
+      g.addColorStop(0.7, def.color);
+      g.addColorStop(1, Sprites._tint(def.color, -0.3));
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(0, 0, r*0.65, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle = Sprites._tint(def.color, -0.6); ctx.lineWidth = 2;
+      ctx.stroke();
+      // Heat glow inside
+      const pulse = 0.5 + Math.sin(time*5)*0.5;
+      ctx.fillStyle = `rgba(255,80,0,${0.15 + pulse*0.2})`;
+      ctx.beginPath(); ctx.arc(0, 0, r*0.4, 0, Math.PI*2); ctx.fill();
+      // Eyes
+      Sprites._eyes(ctx, s*0.85, 'crazy');
+    },
+
+    // Lasagna — stacked sheets BOSS
+    lasagna(ctx, def, s, time) {
+      const r = s/2;
+      // 4 stacked rectangular layers
+      const layers = [
+        { y: -r*0.6, color: def.color, sauce: false },
+        { y: -r*0.3, color: '#fff5e6', sauce: false }, // ricotta
+        { y: 0, color: '#c0392b', sauce: true }, // sauce
+        { y: r*0.3, color: def.color, sauce: false },
+        { y: r*0.6, color: '#f1c40f', sauce: false }, // cheese top
+      ];
+      layers.forEach(l => {
+        const g = ctx.createLinearGradient(0, l.y - r*0.18, 0, l.y + r*0.18);
+        g.addColorStop(0, Sprites._tint(l.color, 0.2));
+        g.addColorStop(1, Sprites._tint(l.color, -0.25));
+        ctx.fillStyle = g;
+        Sprites._roundedRect(ctx, -r*0.95, l.y - r*0.18, r*1.9, r*0.36, r*0.05);
+        ctx.fill();
+        ctx.strokeStyle = Sprites._tint(l.color, -0.5); ctx.lineWidth = 1.5;
+        Sprites._roundedRect(ctx, -r*0.95, l.y - r*0.18, r*1.9, r*0.36, r*0.05);
+        ctx.stroke();
+        // Sauce drip
+        if (l.sauce) {
+          ctx.fillStyle = l.color;
+          for (let i = 0; i < 3; i++) {
+            ctx.beginPath();
+            ctx.arc(-r*0.6 + i*r*0.6, l.y + r*0.18, r*0.06, 0, Math.PI*2);
+            ctx.fill();
+          }
+        }
+      });
+      // Cheese strings on top
+      ctx.strokeStyle = '#fff5b8'; ctx.lineWidth = 1.5;
+      for (let i = -2; i <= 2; i++) {
+        ctx.beginPath();
+        ctx.moveTo(i*r*0.3, r*0.7);
+        ctx.bezierCurveTo(i*r*0.3 + r*0.1, r*0.85, i*r*0.3 - r*0.1, r*0.95, i*r*0.3, r*1.05);
+        ctx.stroke();
+      }
+      // Crown for boss
+      ctx.fillStyle = '#ffd700';
+      ctx.beginPath();
+      ctx.moveTo(-r*0.3, -r*0.85); ctx.lineTo(-r*0.2, -r*1.0); ctx.lineTo(-r*0.05, -r*0.9);
+      ctx.lineTo(0, -r*1.05); ctx.lineTo(r*0.05, -r*0.9); ctx.lineTo(r*0.2, -r*1.0); ctx.lineTo(r*0.3, -r*0.85);
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#a8810a'; ctx.lineWidth = 1.5; ctx.stroke();
+      // Eyes peering from middle layer
+      Sprites._eyes(ctx, s*0.8, 'crazy');
+    },
+
+    // Carbonara — FINAL BOSS (replaces finalBoss)
+    carbonara(ctx, def, s, time) {
+      const r = s/2;
+      const pulse = 0.5 + Math.sin(time*2)*0.5;
+      // Outer aura
+      ctx.fillStyle = `rgba(255,215,0,${0.15 + pulse*0.1})`;
+      ctx.beginPath(); ctx.arc(0, 0, r*1.2, 0, Math.PI*2); ctx.fill();
+      // Tentacle noodles (pale yellow strands)
+      ctx.strokeStyle = '#f5d76e'; ctx.lineWidth = r * 0.12; ctx.lineCap = 'round';
+      for (let i = 0; i < 10; i++) {
+        const a = (i / 10) * Math.PI * 2 + time * 0.2;
+        const len = r * 1.3 + Math.sin(time*3 + i)*r*0.15;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.bezierCurveTo(Math.cos(a)*r*0.5, Math.sin(a)*r*0.5,
+          Math.cos(a+0.4)*r*0.9, Math.sin(a+0.4)*r*0.9,
+          Math.cos(a)*len, Math.sin(a)*len);
+        ctx.stroke();
+      }
+      // Yolk core
+      const g = ctx.createRadialGradient(0, 0, r*0.2, 0, 0, r*0.9);
+      g.addColorStop(0, '#ffeb3b');
+      g.addColorStop(0.5, '#f39c12');
+      g.addColorStop(1, '#7a3a08');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(0, 0, r*0.85, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle = '#3a1c08'; ctx.lineWidth = 2; ctx.stroke();
+      // Bacon (guanciale) bits
+      ctx.fillStyle = '#c0392b';
+      [[0.3,-0.2,0.13,0.4],[-0.3,0.1,0.14,-0.3],[0.05,0.35,0.1,0.1],[-0.1,-0.4,0.12,0.2]].forEach(([fx,fy,fr,rot])=>{
+        ctx.save();
+        ctx.translate(fx*r, fy*r); ctx.rotate(rot);
+        Sprites._roundedRect(ctx, -fr*r, -fr*r*0.4, fr*r*2, fr*r*0.8, fr*r*0.2);
+        ctx.fill();
+        ctx.strokeStyle = '#5a0a0a'; ctx.lineWidth = 1; ctx.stroke();
+        ctx.restore();
+      });
+      // Pecorino sparkles (cheese flecks)
+      ctx.fillStyle = '#fff';
+      for (let i = 0; i < 10; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const rad = Math.random() * r * 0.7;
+        ctx.beginPath(); ctx.arc(Math.cos(a)*rad, Math.sin(a)*rad, r*0.025, 0, Math.PI*2); ctx.fill();
+      }
+      // Big glowing eyes
+      ctx.fillStyle = '#000';
+      ctx.beginPath(); ctx.arc(-r*0.25, -r*0.1, r*0.16, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(r*0.25, -r*0.1, r*0.16, 0, Math.PI*2); ctx.fill();
+      ctx.shadowColor = '#ff0040'; ctx.shadowBlur = 12;
+      ctx.fillStyle = '#ff2060';
+      const pupR = r*0.09 * (0.8 + pulse*0.5);
+      ctx.beginPath(); ctx.arc(-r*0.25, -r*0.1, pupR, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(r*0.25, -r*0.1, pupR, 0, Math.PI*2); ctx.fill();
+      ctx.shadowBlur = 0;
+      // Fanged mouth
+      ctx.fillStyle = '#000';
+      ctx.beginPath();
+      ctx.moveTo(-r*0.3, r*0.3); ctx.lineTo(r*0.3, r*0.3); ctx.lineTo(r*0.22, r*0.55); ctx.lineTo(-r*0.22, r*0.55);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#fff';
+      for (let i = 0; i < 3; i++) {
+        const fx = -r*0.22 + i*r*0.15;
+        ctx.beginPath();
+        ctx.moveTo(fx, r*0.3); ctx.lineTo(fx + r*0.06, r*0.3); ctx.lineTo(fx + r*0.03, r*0.5);
+        ctx.closePath(); ctx.fill();
+      }
+    },
+
+    // Gemelli — twin braided strands
+    gemelli(ctx, def, s, time) {
+      const r = s/2;
+      // Two intertwining strands
+      ctx.lineWidth = r * 0.2;
+      ctx.lineCap = 'round';
+      for (let pass = 0; pass < 2; pass++) {
+        ctx.strokeStyle = pass === 0 ? Sprites._tint(def.color, -0.2) : def.color;
+        ctx.beginPath();
+        for (let t = 0; t <= 1; t += 0.05) {
+          const y = (t - 0.5) * r * 1.6;
+          const x = Math.sin(t * Math.PI * 4 + (pass === 0 ? 0 : Math.PI)) * r * 0.35;
+          if (t === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      }
+      // Eyes
+      Sprites._eyes(ctx, s*0.6, 'crazy');
+    },
+
+    // Tagliatelle — wide ribbon
+    tagliatelle(ctx, def, s, time) {
+      Sprites.enemyDrawers.fettuccine.call(this, ctx, def, s, time);
+      // Make it slightly different — add edge serration
+      const r = s/2;
+      ctx.fillStyle = Sprites._tint(def.color, -0.4);
+      for (let i = -3; i <= 3; i++) {
+        ctx.beginPath();
+        ctx.arc(i*r*0.25, -r*0.5, r*0.03, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath();
+        ctx.arc(i*r*0.25, r*0.5, r*0.03, 0, Math.PI*2); ctx.fill();
+      }
+    },
+
+    // Orecchiette — small ear-shaped (concave disc)
+    orecchiette(ctx, def, s, time) {
+      const r = s/2;
+      // Disk body with concave dent
+      const g = ctx.createRadialGradient(0, r*0.2, r*0.1, 0, 0, r);
+      g.addColorStop(0, Sprites._tint(def.color, -0.2));
+      g.addColorStop(0.5, def.color);
+      g.addColorStop(1, Sprites._tint(def.color, -0.3));
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(0, 0, r*0.8, 0, Math.PI*2);
+      ctx.fill();
+      ctx.strokeStyle = Sprites._tint(def.color, -0.5); ctx.lineWidth = 1.5;
+      ctx.stroke();
+      // Concave shadow (dent in center)
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.beginPath(); ctx.ellipse(0, r*0.1, r*0.45, r*0.3, 0, 0, Math.PI*2); ctx.fill();
+      // Highlight rim
+      ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(0, -r*0.05, r*0.65, Math.PI*1.1, Math.PI*1.9, false);
+      ctx.stroke();
+      Sprites._eyes(ctx, s*0.55, 'mean');
+    },
+
+    // Pastina — tiny particle (just a small dot)
+    pastina(ctx, def, s, time) {
+      const r = s/2;
+      // Single small grain
+      const g = ctx.createRadialGradient(-r*0.15, -r*0.15, r*0.05, 0, 0, r*0.6);
+      g.addColorStop(0, Sprites._tint(def.color, 0.3));
+      g.addColorStop(1, Sprites._tint(def.color, -0.2));
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.ellipse(0, 0, r*0.5, r*0.4, 0, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle = Sprites._tint(def.color, -0.5); ctx.lineWidth = 1;
+      ctx.stroke();
+      // Tiny dot eyes
+      ctx.fillStyle = '#111';
+      ctx.beginPath(); ctx.arc(-r*0.12, 0, r*0.05, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(r*0.12, 0, r*0.05, 0, Math.PI*2); ctx.fill();
+    },
+
+    // Cavatappi — long hollow corkscrew
+    cavatappi(ctx, def, s, time) {
+      const r = s/2;
+      const spin = time * 5;
+      ctx.save();
+      ctx.rotate(0.2);
+      ctx.strokeStyle = def.color;
+      ctx.lineWidth = r * 0.3;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      for (let t = 0; t <= 1; t += 0.04) {
+        const x = (t - 0.5) * r * 1.7;
+        const y = Math.sin(t * Math.PI * 6 + spin) * r * 0.4;
+        if (t === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      // Hollow center groove
+      ctx.strokeStyle = Sprites._tint(def.color, -0.4);
+      ctx.lineWidth = r * 0.08;
+      ctx.beginPath();
+      for (let t = 0; t <= 1; t += 0.04) {
+        const x = (t - 0.5) * r * 1.7;
+        const y = Math.sin(t * Math.PI * 6 + spin) * r * 0.4;
+        if (t === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.restore();
+      Sprites._eyes(ctx, s*0.5, 'crazy');
+    },
+
+    // Stelline — star-shaped tiny pasta
+    stelline(ctx, def, s, time) {
+      const r = s/2;
+      ctx.save();
+      ctx.rotate(time * 1.5);
+      // 5-point star
+      ctx.fillStyle = def.color;
+      ctx.beginPath();
+      for (let i = 0; i < 10; i++) {
+        const a = (i / 10) * Math.PI * 2 - Math.PI/2;
+        const rad = i % 2 === 0 ? r*0.85 : r*0.4;
+        const x = Math.cos(a) * rad;
+        const y = Math.sin(a) * rad;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = Sprites._tint(def.color, -0.4); ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.restore();
+      // Tiny center eyes
+      ctx.fillStyle = '#111';
+      ctx.beginPath(); ctx.arc(-r*0.1, 0, r*0.05, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(r*0.1, 0, r*0.05, 0, Math.PI*2); ctx.fill();
+    },
+
+    // Pesto — green basil blob
+    pesto(ctx, def, s, time) {
+      Sprites.enemyDrawers.pastaSauce.call(this, ctx, { ...def, color: '#27ae60' }, s, time);
+      // Add little pine nut specks
+      const r = s/2;
+      ctx.fillStyle = '#f5e1a4';
+      [[0.2,-0.15,0.05],[-0.25,0.1,0.04],[0.1,0.25,0.04],[-0.15,-0.3,0.04]].forEach(([fx,fy,fr])=>{
+        ctx.beginPath(); ctx.ellipse(fx*r, fy*r, fr*r, fr*r*0.6, 0, 0, Math.PI*2); ctx.fill();
+      });
+    },
+
+    // Alfredo — creamy white boss
+    alfredo(ctx, def, s, time) {
+      const r = s/2;
+      // Pearly white drippy body (like mozzarella but bigger)
+      Sprites.enemyDrawers.mozzarella.call(this, ctx, { ...def, color: '#fff4d6' }, s, time);
+      // Add parmesan flecks
+      const r2 = s/2;
+      ctx.fillStyle = '#f1c40f';
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.arc(Math.cos(a)*r2*0.5, Math.sin(a)*r2*0.5, r2*0.04, 0, Math.PI*2);
+        ctx.fill();
+      }
+    },
+
+    // Carbonara replaces finalBoss visually but keep finalBoss as fallback for old saves
     finalBoss(ctx, def, s, time) {
       const r = s/2;
       // Outer dark mass with writhing tentacles
