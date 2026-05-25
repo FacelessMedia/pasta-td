@@ -558,31 +558,104 @@ const UI = {
   renderSkillTree() {
     this.el.marksDisplay.textContent = Game.state.marks;
     this.el.skillTreeGrid.innerHTML = '';
+
+    // Layout coords (percent within branch canvas)
+    const COLS = [15, 50, 85];
+    const TIERS = [14, 38, 62, 90];
+
     Object.entries(SKILL_TREE).forEach(([branchId, branch]) => {
-      const div = document.createElement('div');
-      div.className = 'skill-branch ' + branchId;
-      div.innerHTML = `<h3 style="color:${branch.color}">${branch.name}</h3>`;
+      const branchDiv = document.createElement('div');
+      branchDiv.className = 'skill-branch ' + branchId;
+      branchDiv.innerHTML = `<h3 style="color:${branch.color}">${branch.name}</h3>`;
+
+      const canvas = document.createElement('div');
+      canvas.className = 'skill-tree-canvas';
+      canvas.style.borderColor = branch.color + '55';
+
+      // SVG layer for connection lines
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.classList.add('skill-connections');
+      svg.setAttribute('viewBox', '0 0 100 100');
+      svg.setAttribute('preserveAspectRatio', 'none');
+      canvas.appendChild(svg);
+
+      // Helper to compute node position by id
+      const nodeMap = {};
+      branch.nodes.forEach(n => { nodeMap[n.id] = n; });
+      const posOf = (n) => ({
+        x: COLS[n.col !== undefined ? n.col : 1],
+        y: TIERS[(n.tier || 1) - 1]
+      });
+
+      // Draw connection lines
+      branch.nodes.forEach(node => {
+        (node.requires || []).forEach(req => {
+          const parent = nodeMap[req.id];
+          if (!parent) return;
+          const p = posOf(parent);
+          const c = posOf(node);
+          const parentLvl = Game.state.skillPoints[req.id] || 0;
+          const active = parentLvl >= req.lvl;
+          const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          line.setAttribute('x1', p.x);
+          line.setAttribute('y1', p.y);
+          line.setAttribute('x2', c.x);
+          line.setAttribute('y2', c.y);
+          line.setAttribute('stroke', active ? branch.color : '#3a2a1e');
+          line.setAttribute('stroke-width', active ? '0.8' : '0.5');
+          line.setAttribute('stroke-dasharray', active ? '' : '2 1.5');
+          line.setAttribute('opacity', active ? '0.9' : '0.55');
+          svg.appendChild(line);
+        });
+      });
+
+      // Render nodes (absolutely positioned)
       branch.nodes.forEach(node => {
         const lvl = Game.state.skillPoints[node.id] || 0;
         const maxed = lvl >= node.max;
-        const cost = node.costs[lvl];
+        const cost = !maxed ? node.costs[lvl] : 0;
+        // Check prereqs
+        const prereqMet = (node.requires || []).every(req => (Game.state.skillPoints[req.id] || 0) >= req.lvl);
         const canAfford = !maxed && Game.state.marks >= cost;
+        const available = prereqMet && !maxed;
+        const buyable = available && canAfford;
+        const locked = !prereqMet && !maxed;
+        const pos = posOf(node);
         const nodeDiv = document.createElement('div');
-        nodeDiv.className = 'skill-node' + (maxed ? ' maxed' : (!canAfford ? ' locked' : ''));
+        nodeDiv.className = 'skill-node' + (maxed ? ' maxed' : '') + (locked ? ' locked' : '') + (buyable ? ' buyable' : '') + (node.keystone ? ' keystone' : '') + (available && !canAfford && !maxed ? ' poor' : '');
+        nodeDiv.style.left = pos.x + '%';
+        nodeDiv.style.top = pos.y + '%';
+        if (node.keystone) nodeDiv.style.borderColor = branch.color;
+
+        // Tooltip-style content
+        const lockMsg = locked
+          ? `🔒 Requires: ${(node.requires||[]).map(r => `${nodeMap[r.id].name} Lv${r.lvl}`).join(', ')}`
+          : '';
+        const costLabel = maxed ? '✓ MAX' : (locked ? '🔒' : `🥫${cost}`);
+        const initial = node.keystone ? '★' : node.name.charAt(0);
+
         nodeDiv.innerHTML = `
-          <div class="name">${node.name} <span class="cost">${maxed ? '✓ MAX' : '🥫 ' + cost}</span></div>
-          <div class="desc">${node.desc}</div>
-          <div class="level">Level ${lvl}/${node.max}</div>
+          <div class="sn-emoji">${initial}</div>
+          <div class="sn-lvl">${lvl}/${node.max}</div>
+          <div class="sn-tooltip">
+            <div class="sn-title">${node.name}</div>
+            <div class="sn-desc">${node.desc}</div>
+            <div class="sn-stats">Lv ${lvl}/${node.max} <span class="sep">·</span> Cost ${costLabel}</div>
+            ${lockMsg ? `<div class="sn-lock">${lockMsg}</div>` : ''}
+          </div>
         `;
-        if (!maxed && canAfford) {
+
+        if (buyable) {
           nodeDiv.addEventListener('click', () => {
             Game.buySkill(branchId, node.id);
             this.renderSkillTree();
           });
         }
-        div.appendChild(nodeDiv);
+        canvas.appendChild(nodeDiv);
       });
-      this.el.skillTreeGrid.appendChild(div);
+
+      branchDiv.appendChild(canvas);
+      this.el.skillTreeGrid.appendChild(branchDiv);
     });
   },
 
@@ -604,28 +677,41 @@ const UI = {
     this.el.btnDoPrestige.disabled = sauceGain < 1;
 
     this.el.prestigePerks.innerHTML = '';
-    PRESTIGE_PERKS.forEach(perk => {
-      const lvl = Game.save.prestigePerks[perk.id] || 0;
-      const maxed = lvl >= perk.max;
-      const cost = perk.cost * (lvl + 1);
-      const canAfford = !maxed && Game.save.sauce >= cost;
-      const div = document.createElement('div');
-      div.className = 'perk' + (maxed ? ' maxed' : '');
-      div.innerHTML = `
-        <div class="name">${perk.name} ${maxed ? '✓' : ''}</div>
-        <div class="desc">${perk.desc}</div>
-        <div class="level">Lv ${lvl}/${perk.max} ${maxed ? '' : '— 🍅 ' + cost}</div>
-      `;
-      if (!maxed && canAfford) {
-        div.addEventListener('click', () => {
-          Game.buyPerk(perk.id);
-          this.renderPrestige();
-          this.renderMenuSummary();
-        });
-      } else if (!maxed) {
-        div.style.opacity = '0.6';
-      }
-      this.el.prestigePerks.appendChild(div);
+    const categories = {
+      atk: { label: '⚔️ Offense', color: '#d63031' },
+      def: { label: '🛡️ Defense', color: '#6ab04c' },
+      eco: { label: '🪙 Economy', color: '#ffd700' },
+      qol: { label: '⏩ Quality of Life', color: '#74b9ff' }
+    };
+    Object.entries(categories).forEach(([catId, cat]) => {
+      const section = document.createElement('div');
+      section.className = 'perk-category';
+      section.innerHTML = `<h4 style="color:${cat.color};grid-column:1/-1;margin:8px 0 4px;border-bottom:1px solid ${cat.color}44;padding-bottom:3px">${cat.label}</h4>`;
+      const sectionPerks = PRESTIGE_PERKS.filter(p => p.category === catId);
+      sectionPerks.forEach(perk => {
+        const lvl = Game.save.prestigePerks[perk.id] || 0;
+        const maxed = lvl >= perk.max;
+        const cost = perk.cost * (lvl + 1);
+        const canAfford = !maxed && Game.save.sauce >= cost;
+        const div = document.createElement('div');
+        div.className = 'perk' + (maxed ? ' maxed' : '');
+        div.innerHTML = `
+          <div class="name">${perk.name} ${maxed ? '✓' : ''}</div>
+          <div class="desc">${perk.desc}</div>
+          <div class="level">Lv ${lvl}/${perk.max} ${maxed ? '' : '— 🍅 ' + cost}</div>
+        `;
+        if (!maxed && canAfford) {
+          div.addEventListener('click', () => {
+            Game.buyPerk(perk.id);
+            this.renderPrestige();
+            this.renderMenuSummary();
+          });
+        } else if (!maxed) {
+          div.style.opacity = '0.6';
+        }
+        section.appendChild(div);
+      });
+      this.el.prestigePerks.appendChild(section);
     });
   },
 

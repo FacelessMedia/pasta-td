@@ -307,6 +307,7 @@ input:focus { border-color: var(--gold); }
   box-shadow: 0 20px 60px rgba(0,0,0,0.7);
 }
 .modal-content.wide { width: 800px; }
+.modal-content.xwide { width: 1100px; }
 .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .modal-header h2 { color: var(--gold); }
 .close-btn { background: transparent; border: none; color: var(--cream); font-size: 22px; cursor: pointer; padding: 4px 8px; }
@@ -319,39 +320,155 @@ input:focus { border-color: var(--gold); }
   gap: 12px;
   margin-top: 12px;
 }
+.skill-tree-grid {
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr) !important;
+  gap: 16px !important;
+}
 .skill-branch {
-  background: rgba(0,0,0,0.3);
+  background: linear-gradient(180deg, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.25) 100%);
   padding: 12px;
-  border-radius: 10px;
+  border-radius: 14px;
   border: 2px solid var(--wood);
+  min-width: 0;
 }
 .skill-branch.tomato { border-color: var(--tomato); }
 .skill-branch.garlic { border-color: var(--garlic); }
 .skill-branch.basil { border-color: var(--basil); }
-.skill-branch h3 { color: var(--cream); margin-bottom: 8px; }
+.skill-branch h3 { color: var(--cream); margin-bottom: 10px; text-align: center; font-size: 15px; }
+
+/* The tree canvas where nodes and SVG lines live */
+.skill-tree-canvas {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 280 / 420;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255,215,0,0.05) 0%, transparent 70%),
+    rgba(0,0,0,0.35);
+  border: 1px solid var(--wood);
+  border-radius: 10px;
+  overflow: visible;
+}
+.skill-connections {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+
 .skill-node {
-  background: rgba(0,0,0,0.4);
-  padding: 8px;
-  border-radius: 6px;
-  margin-bottom: 6px;
-  border: 1px solid transparent;
+  position: absolute;
+  width: 56px;
+  height: 56px;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle at 35% 30%, #4a2f1c 0%, #2a1810 100%);
+  border-radius: 50%;
+  border: 3px solid #5a3a25;
   cursor: pointer;
   transition: all 0.15s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 3px 0 rgba(0,0,0,0.5), inset 0 0 8px rgba(0,0,0,0.4);
+  z-index: 2;
 }
-.skill-node:hover:not(.maxed):not(.locked) { background: rgba(255,215,0,0.15); border-color: var(--gold); }
-.skill-node.maxed { border-color: var(--basil); background: rgba(106,176,76,0.15); cursor: default; }
-.skill-node.locked { opacity: 0.5; cursor: not-allowed; }
-.skill-node .name { font-size: 13px; font-weight: bold; }
-.skill-node .desc { font-size: 11px; color: rgba(255,255,255,0.7); margin: 3px 0; }
-.skill-node .level { font-size: 11px; color: var(--gold); }
-.skill-node .cost { font-size: 11px; color: var(--garlic); float: right; }
+.skill-node .sn-emoji {
+  font-size: 22px;
+  font-weight: bold;
+  color: rgba(255,255,255,0.55);
+  line-height: 1;
+}
+.skill-node .sn-lvl {
+  font-size: 9px;
+  font-weight: bold;
+  color: var(--gold);
+  margin-top: 2px;
+}
+.skill-node.buyable {
+  border-color: var(--gold);
+  box-shadow: 0 0 14px rgba(255,215,0,0.65), 0 3px 0 rgba(0,0,0,0.5);
+  animation: skillPulse 1.6s ease-in-out infinite;
+}
+.skill-node.buyable .sn-emoji { color: var(--gold); }
+.skill-node.poor {
+  border-color: #c0392b;
+  opacity: 0.85;
+}
+.skill-node.poor .sn-emoji { color: #c0392b; }
+.skill-node.maxed {
+  border-color: var(--basil);
+  background: radial-gradient(circle at 35% 30%, #2d4a1c 0%, #14260e 100%);
+  box-shadow: 0 0 10px rgba(106,176,76,0.5), 0 3px 0 rgba(0,0,0,0.5);
+  cursor: default;
+}
+.skill-node.maxed .sn-emoji { color: #6ab04c; }
+.skill-node.maxed .sn-lvl { color: #6ab04c; }
+.skill-node.locked {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: grayscale(0.8);
+}
+.skill-node.keystone {
+  width: 70px;
+  height: 70px;
+  border-width: 4px;
+  background: radial-gradient(circle at 35% 30%, #6a1f12 0%, #2a0808 100%);
+  box-shadow: 0 0 18px rgba(214,48,49,0.55), 0 3px 0 rgba(0,0,0,0.5);
+}
+.skill-node.keystone .sn-emoji { font-size: 28px; color: var(--gold); }
+.skill-node.keystone.maxed {
+  background: radial-gradient(circle at 35% 30%, #ffd700 0%, #b8860b 100%);
+  box-shadow: 0 0 28px rgba(255,215,0,0.9), 0 3px 0 rgba(0,0,0,0.5);
+}
+.skill-node.keystone.maxed .sn-emoji { color: #2a1810; }
+
+@keyframes skillPulse {
+  0%, 100% { box-shadow: 0 0 14px rgba(255,215,0,0.65), 0 3px 0 rgba(0,0,0,0.5); }
+  50% { box-shadow: 0 0 22px rgba(255,215,0,0.95), 0 3px 0 rgba(0,0,0,0.5); }
+}
+
+.sn-tooltip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 200px;
+  background: linear-gradient(180deg, #3d2418 0%, #2a1810 100%);
+  border: 2px solid var(--gold);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 11px;
+  color: var(--cream);
+  text-align: left;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 100;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.6);
+}
+.skill-node:hover .sn-tooltip {
+  opacity: 1;
+}
+.sn-tooltip .sn-title { font-weight: bold; color: var(--gold); margin-bottom: 3px; font-size: 12px; }
+.sn-tooltip .sn-desc { color: rgba(255,255,255,0.85); margin-bottom: 4px; line-height: 1.35; }
+.sn-tooltip .sn-stats { color: var(--cream); font-size: 10px; }
+.sn-tooltip .sn-stats .sep { opacity: 0.5; margin: 0 4px; }
+.sn-tooltip .sn-lock { margin-top: 4px; color: #ff6b6b; font-size: 10px; line-height: 1.3; }
 
 /* ============ PRESTIGE ============ */
 .prestige-perks {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+.perk-category {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 8px;
-  margin-top: 10px;
 }
 .perk {
   background: rgba(0,0,0,0.3);

@@ -458,46 +458,93 @@ const WAVES = generateWaves();
 const MAX_WAVES = WAVES.length;
 
 // ============== SKILL TREE ==============
+// 3 branches x 10 nodes each = 30 nodes, with prerequisites and tiered costs.
+// Layout: tier (row 1-4) and col (0-2), keystone is tier 4 col 1.
+// `requires` is array of {id, lvl} for prerequisite nodes.
 const SKILL_TREE = {
   tomato: {
-    name: '🍅 Tomato (Offense)', color: '#d63031',
+    name: '🍅 Tomato — Offense', color: '#d63031',
     nodes: [
-      { id: 'dmg1', name: 'Saucier Shots', desc: '+10% tower damage', max: 5, costs: [1,1,2,3,4], effect: { type: 'damageMult', value: 0.10 } },
-      { id: 'rate1', name: 'Heat the Stove', desc: '+8% attack speed', max: 5, costs: [1,1,2,3,4], effect: { type: 'fireRateMult', value: 0.08 } },
-      { id: 'splash1', name: 'Bigger Pots', desc: '+15% splash radius', max: 3, costs: [2,3,4], effect: { type: 'splashMult', value: 0.15 } },
-      { id: 'crit1', name: 'Chef\'s Special', desc: '+5% crit chance (x2 dmg)', max: 4, costs: [2,3,4,5], effect: { type: 'critChance', value: 0.05 } }
-    ]
-  },
-  garlic: {
-    name: '🧄 Garlic (Economy)', color: '#ffeaa7',
-    nodes: [
-      { id: 'gold1', name: 'Loot Drops', desc: '+10% gold from kills', max: 5, costs: [1,1,2,3,4], effect: { type: 'goldMult', value: 0.10 } },
-      { id: 'cost1', name: 'Bulk Buying', desc: '-5% tower cost', max: 4, costs: [2,2,3,4], effect: { type: 'costMult', value: -0.05 } },
-      { id: 'wave1', name: 'Bigger Tips', desc: '+25% wave reward gold', max: 4, costs: [1,2,3,4], effect: { type: 'waveBonusMult', value: 0.25 } },
-      { id: 'interest', name: 'Saver\'s Bonus', desc: '+2% gold per wave', max: 3, costs: [3,4,5], effect: { type: 'interest', value: 0.02 } }
+      // Tier 1 (foundation)
+      { id: 'dmg1', tier: 1, col: 0, name: 'Saucier Shots', desc: '+8% tower damage', max: 5, costs: [2,3,4,5,7], requires: [], effect: { type: 'damageMult', value: 0.08 } },
+      { id: 'rate1', tier: 1, col: 1, name: 'Heat the Stove', desc: '+6% attack speed', max: 5, costs: [2,3,4,5,7], requires: [], effect: { type: 'fireRateMult', value: 0.06 } },
+      { id: 'range1', tier: 1, col: 2, name: 'Long Reach', desc: '+8% tower range', max: 5, costs: [2,3,4,5,7], requires: [], effect: { type: 'rangeMult', value: 0.08 } },
+      // Tier 2 (require T1 lvl 2+)
+      { id: 'dmg2', tier: 2, col: 0, name: 'Power Strike', desc: 'Upgrades grant +6% extra dmg', max: 4, costs: [4,6,8,11], requires: [{ id: 'dmg1', lvl: 2 }], effect: { type: 'upgradeDmgMult', value: 0.06 } },
+      { id: 'rate2', tier: 2, col: 1, name: 'Frenzy', desc: 'After a kill, +5% rate for 1.5s (stacks 5x)', max: 3, costs: [5,8,12], requires: [{ id: 'rate1', lvl: 2 }], effect: { type: 'frenzy', value: 0.05 } },
+      { id: 'splash1', tier: 2, col: 2, name: 'Bigger Pots', desc: '+12% splash radius', max: 4, costs: [4,6,8,11], requires: [{ id: 'range1', lvl: 2 }], effect: { type: 'splashMult', value: 0.12 } },
+      // Tier 3 (require T2 lvl 1+)
+      { id: 'crit1', tier: 3, col: 0, name: 'Chef\'s Special', desc: '+4% crit chance (x2 dmg)', max: 5, costs: [6,9,12,15,18], requires: [{ id: 'dmg2', lvl: 1 }], effect: { type: 'critChance', value: 0.04 } },
+      { id: 'pierce1', tier: 3, col: 1, name: 'Skewer Shots', desc: 'Projectiles pierce +1 enemy', max: 3, costs: [10,14,20], requires: [{ id: 'rate2', lvl: 1 }], effect: { type: 'pierce', value: 1 } },
+      { id: 'boss1', tier: 3, col: 2, name: 'Boss Buster', desc: '+18% damage to bosses', max: 4, costs: [7,10,13,18], requires: [{ id: 'splash1', lvl: 1 }], effect: { type: 'bossDmgMult', value: 0.18 } },
+      // Tier 4 keystone (require any 2 T3 lvl 2+)
+      { id: 'gordon', tier: 4, col: 1, name: 'GORDON MODE', desc: 'KEYSTONE — All towers +30% dmg & +20% rate', max: 1, costs: [45], requires: [{ id: 'crit1', lvl: 2 }, { id: 'boss1', lvl: 2 }], keystone: true, effect: { type: 'gordon', value: 1 } }
     ]
   },
   basil: {
-    name: '🌿 Basil (Defense)', color: '#6ab04c',
+    name: '🌿 Basil — Defense', color: '#6ab04c',
     nodes: [
-      { id: 'lives1', name: 'Extra Plates', desc: '+5 max lives', max: 4, costs: [1,2,3,4], effect: { type: 'maxLives', value: 5 } },
-      { id: 'regen1', name: 'Soup of the Day', desc: '+1 life every 5 waves', max: 3, costs: [2,3,4], effect: { type: 'lifeRegen', value: 1 } },
-      { id: 'range1', name: 'Long Arms', desc: '+10% tower range', max: 4, costs: [1,2,3,4], effect: { type: 'rangeMult', value: 0.10 } },
-      { id: 'slow1', name: 'Sticky Sauce', desc: 'All enemies -5% speed', max: 4, costs: [2,3,4,5], effect: { type: 'enemySpeedMult', value: -0.05 } }
+      // Tier 1
+      { id: 'lives1', tier: 1, col: 0, name: 'Extra Plates', desc: '+4 max lives', max: 5, costs: [2,3,4,5,7], requires: [], effect: { type: 'maxLives', value: 4 } },
+      { id: 'slow1', tier: 1, col: 1, name: 'Sticky Sauce', desc: 'All enemies -4% speed', max: 5, costs: [2,3,4,5,7], requires: [], effect: { type: 'enemySpeedMult', value: -0.04 } },
+      { id: 'regen1', tier: 1, col: 2, name: 'Soup of the Day', desc: '+1 life every 4 waves', max: 4, costs: [3,4,5,7], requires: [], effect: { type: 'lifeRegen', value: 1 } },
+      // Tier 2
+      { id: 'armor1', tier: 2, col: 0, name: 'Iron Cookware', desc: 'All damage ignores 5% enemy armor', max: 4, costs: [4,6,9,12], requires: [{ id: 'lives1', lvl: 2 }], effect: { type: 'armorPierce', value: 0.05 } },
+      { id: 'slowDur', tier: 2, col: 1, name: 'Frostbite', desc: 'Slow effects last 25% longer', max: 4, costs: [5,7,10,13], requires: [{ id: 'slow1', lvl: 2 }], effect: { type: 'slowDurMult', value: 0.25 } },
+      { id: 'shieldOnce', tier: 2, col: 2, name: 'Last Stand', desc: 'Survive 1 lethal hit per wave', max: 3, costs: [8,12,16], requires: [{ id: 'regen1', lvl: 2 }], effect: { type: 'lethalShield', value: 1 } },
+      // Tier 3
+      { id: 'critPierce', tier: 3, col: 0, name: 'Weak Spot', desc: 'Crits ignore 100% of armor', max: 1, costs: [18], requires: [{ id: 'armor1', lvl: 1 }], effect: { type: 'critArmorPierce', value: 1 } },
+      { id: 'iceField', tier: 3, col: 1, name: 'Glacial Field', desc: 'All hits slow target by 8% for 1s', max: 1, costs: [20], requires: [{ id: 'slowDur', lvl: 1 }], effect: { type: 'globalSlow', value: 0.08 } },
+      { id: 'thorns', tier: 3, col: 2, name: 'Sauce Splatter', desc: 'Damage attackers reflect 25%', max: 3, costs: [10,14,18], requires: [{ id: 'shieldOnce', lvl: 1 }], effect: { type: 'thorns', value: 0.25 } },
+      // Tier 4 keystone
+      { id: 'grandma', tier: 4, col: 1, name: 'GRANDMA\'S WRATH', desc: 'KEYSTONE — +25% range, +15 max lives, all slows +20%', max: 1, costs: [45], requires: [{ id: 'critPierce', lvl: 1 }, { id: 'thorns', lvl: 1 }], keystone: true, effect: { type: 'grandma', value: 1 } }
+    ]
+  },
+  garlic: {
+    name: '🧄 Garlic — Economy', color: '#ffeaa7',
+    nodes: [
+      // Tier 1
+      { id: 'gold1', tier: 1, col: 0, name: 'Loot Drops', desc: '+8% gold from kills', max: 5, costs: [2,3,4,5,7], requires: [], effect: { type: 'goldMult', value: 0.08 } },
+      { id: 'cost1', tier: 1, col: 1, name: 'Bulk Buying', desc: '-4% tower cost', max: 4, costs: [3,4,5,7], requires: [], effect: { type: 'costMult', value: -0.04 } },
+      { id: 'wave1', tier: 1, col: 2, name: 'Bigger Tips', desc: '+18% wave reward gold', max: 4, costs: [3,4,5,7], requires: [], effect: { type: 'waveBonusMult', value: 0.18 } },
+      // Tier 2
+      { id: 'interest', tier: 2, col: 0, name: 'Compound Interest', desc: '+2% of held gold per wave', max: 4, costs: [5,7,10,13], requires: [{ id: 'gold1', lvl: 2 }], effect: { type: 'interest', value: 0.02 } },
+      { id: 'sell1', tier: 2, col: 1, name: 'Resale Value', desc: 'Sell refunds 100% (was 70%)', max: 1, costs: [10], requires: [{ id: 'cost1', lvl: 2 }], effect: { type: 'sellFull', value: 1 } },
+      { id: 'upgCost', tier: 2, col: 2, name: 'Bargain Upgrades', desc: '-10% upgrade cost', max: 3, costs: [5,8,12], requires: [{ id: 'wave1', lvl: 2 }], effect: { type: 'upgradeCostMult', value: -0.10 } },
+      // Tier 3
+      { id: 'bountyHunter', tier: 3, col: 0, name: 'Bounty Hunter', desc: '+50% gold from boss kills', max: 3, costs: [8,12,16], requires: [{ id: 'interest', lvl: 1 }], effect: { type: 'bossGold', value: 0.50 } },
+      { id: 'tipJar', tier: 3, col: 1, name: 'Tip Jar', desc: 'Passive: +5 gold per wave', max: 4, costs: [7,10,13,16], requires: [{ id: 'sell1', lvl: 1 }], effect: { type: 'passiveGold', value: 5 } },
+      { id: 'mark1', tier: 3, col: 2, name: 'Mark Collector', desc: '+1 Marinara Mark per 10 waves', max: 3, costs: [10,14,18], requires: [{ id: 'upgCost', lvl: 1 }], effect: { type: 'extraMarks', value: 1 } },
+      // Tier 4 keystone
+      { id: 'goldenAge', tier: 4, col: 1, name: 'GOLDEN AGE', desc: 'KEYSTONE — +30% all gold, +1 mark every wave', max: 1, costs: [50], requires: [{ id: 'bountyHunter', lvl: 1 }, { id: 'mark1', lvl: 1 }], keystone: true, effect: { type: 'goldenAge', value: 1 } }
     ]
   }
 };
 
 // ============== PRESTIGE PERKS ==============
+// Permanent meta-progression. Costs scale per level (cost * (lvl+1)).
 const PRESTIGE_PERKS = [
-  { id: 'startGold', name: '💰 Starting Cash', desc: '+50 starting gold per level', max: 10, cost: 1, effect: { startGold: 50 } },
-  { id: 'globalDmg', name: '⚔️ Permanent Power', desc: '+5% damage per level', max: 20, cost: 1, effect: { damageMult: 0.05 } },
-  { id: 'globalGold', name: '🪙 Permanent Profit', desc: '+5% gold gain per level', max: 20, cost: 1, effect: { goldMult: 0.05 } },
-  { id: 'startLives', name: '❤️ Bigger Pot', desc: '+2 starting lives per level', max: 10, cost: 1, effect: { startLives: 2 } },
-  { id: 'startMarks', name: '🥫 Sauce Stockpile', desc: '+1 starting Marinara Mark per level', max: 10, cost: 2, effect: { startMarks: 1 } },
-  { id: 'fastStart', name: '🚀 Pre-Boil', desc: 'All towers unlocked from wave 1', max: 1, cost: 5, effect: { fastStart: true } },
-  { id: 'speedBoost', name: '⏩ Faster Cooking', desc: 'Unlock 3x game speed', max: 1, cost: 3, effect: { speed3x: true } },
-  { id: 'critBase', name: '💥 Lucky Chef', desc: '+3% global crit chance per level', max: 5, cost: 2, effect: { critBase: 0.03 } }
+  // ECONOMY
+  { id: 'startGold',   category: 'eco', name: '💰 Starting Cash',     desc: '+50 starting gold',                    max: 10, cost: 1, effect: { startGold: 50 } },
+  { id: 'globalGold',  category: 'eco', name: '🪙 Permanent Profit',  desc: '+5% gold gain (all sources)',          max: 20, cost: 1, effect: { goldMult: 0.05 } },
+  { id: 'sellRefund',  category: 'eco', name: '♻️ Smart Selling',     desc: 'Sell refund +5% (caps at 100%)',       max: 6,  cost: 2, effect: { sellBonus: 0.05 } },
+  { id: 'startMarks',  category: 'eco', name: '🥫 Sauce Stockpile',   desc: '+1 starting Marinara Mark',            max: 10, cost: 2, effect: { startMarks: 1 } },
+  { id: 'marksBoost',  category: 'eco', name: '🍷 Marinara Vintage',  desc: '+10% Marinara Marks earned',           max: 5,  cost: 3, effect: { markGain: 0.10 } },
+  // OFFENSE
+  { id: 'globalDmg',   category: 'atk', name: '⚔️ Permanent Power',   desc: '+5% damage',                            max: 20, cost: 1, effect: { damageMult: 0.05 } },
+  { id: 'critBase',    category: 'atk', name: '💥 Lucky Chef',        desc: '+3% global crit chance',                max: 5,  cost: 2, effect: { critBase: 0.03 } },
+  { id: 'globalRate',  category: 'atk', name: '🔥 Quick Fingers',     desc: '+3% attack speed',                      max: 10, cost: 2, effect: { fireRateMult: 0.03 } },
+  { id: 'globalRange', category: 'atk', name: '🎯 Eagle Eye',         desc: '+3% range',                             max: 10, cost: 2, effect: { rangeMult: 0.03 } },
+  { id: 'firstStrike', category: 'atk', name: '⚡ First Strike',      desc: 'First shot of each wave is x3 dmg',    max: 1,  cost: 8, effect: { firstStrike: 1 } },
+  // DEFENSE
+  { id: 'startLives',  category: 'def', name: '❤️ Bigger Pot',        desc: '+2 starting lives',                     max: 10, cost: 1, effect: { startLives: 2 } },
+  { id: 'enemySlow',   category: 'def', name: '🐌 Heavy Air',          desc: 'All enemies -2% speed',                 max: 8,  cost: 2, effect: { enemySpdMult: -0.02 } },
+  { id: 'enemyDmg',    category: 'def', name: '🛡️ Tougher Plates',    desc: 'Enemies deal -10% lives damage at goal', max: 5, cost: 3, effect: { enemyHitMult: -0.10 } },
+  // QOL & UNLOCKS
+  { id: 'fastStart',   category: 'qol', name: '🚀 Pre-Boil',           desc: 'All towers unlocked from wave 1',       max: 1,  cost: 5, effect: { fastStart: true } },
+  { id: 'speedBoost',  category: 'qol', name: '⏩ Faster Cooking',     desc: 'Unlock 3x game speed',                   max: 1,  cost: 3, effect: { speed3x: true } },
+  { id: 'extraSpeed',  category: 'qol', name: '� Hyper Speed',        desc: 'Unlock 5x game speed (req 3x)',          max: 1,  cost: 8, effect: { speed5x: true } },
+  { id: 'autoWave',    category: 'qol', name: '🤖 Auto-Wave',          desc: 'Waves auto-start after 8 seconds',      max: 1,  cost: 6, effect: { autoWave: true } }
 ];
 
 // ============== SAVE FACTORY ==============

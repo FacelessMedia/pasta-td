@@ -106,6 +106,9 @@ const Game = {
     this.generatePath();
     const mapDef = this.getCurrentMap();
     this.state = makeRunState(this.save, mapDef);
+    // Per-wave trackers
+    this.state.lethalShieldsLeft = 0;
+    this.state.firstStrikeUsed = false;
     this.selectedTowerType = null;
     this.selectedTower = null;
     this.spawnQueue = [];
@@ -200,17 +203,33 @@ const Game = {
       getDamage() {
         const base = this.def.damage + (this.upgrades.damage || 0) * (this.def.upgrades.damage?.increment || 0);
         const auraBoost = Game.computeAuraBoost(this);
-        const skill = Game.computeStat('damageMult', 1) * (1 + auraBoost);
+        let skill = Game.computeStat('damageMult', 1) * (1 + auraBoost);
+        // Power Strike: +6% damage per total upgrade level on this tower
+        const totalUpgrades = Object.values(this.upgrades).reduce((a,b)=>a+b, 0);
+        skill += Game.computeStat('upgradeDmgMult', 0) * totalUpgrades;
         const perk = 1 + (Game.save.prestigePerks.globalDmg || 0) * 0.05;
         return base * skill * perk;
       },
       getRange() {
         const base = this.def.range + (this.upgrades.range || 0) * (this.def.upgrades.range?.increment || 0);
-        return base * Game.computeStat('rangeMult', 1);
+        let mult = Game.computeStat('rangeMult', 1);
+        mult *= 1 + (Game.save.prestigePerks.globalRange || 0) * 0.03;
+        return base * mult;
       },
       getFireRate() {
         const base = this.def.fireRate + (this.upgrades.fireRate || 0) * (this.def.upgrades.fireRate?.increment || 0);
-        return base * Game.computeStat('fireRateMult', 1);
+        let mult = Game.computeStat('fireRateMult', 1);
+        // Frenzy stacks (skill rate2)
+        const now = performance.now()/1000;
+        if (this.frenzyUntil && now < this.frenzyUntil) {
+          const stacks = this.frenzyStacks || 0;
+          const frenzyVal = Game.computeStat('frenzy', 0);
+          mult += frenzyVal * stacks;
+        } else if (this.frenzyStacks) {
+          this.frenzyStacks = 0;
+        }
+        mult *= 1 + (Game.save.prestigePerks.globalRate || 0) * 0.03;
+        return base * mult;
       },
       getSplash() {
         if (!this.def.splash) return 0;
@@ -223,7 +242,10 @@ const Game = {
       },
       getSlowDuration() {
         if (!this.def.slow) return 0;
-        return this.def.slow.duration + (this.upgrades.slowDuration || 0) * (this.def.upgrades.slowDuration?.increment || 0);
+        const base = this.def.slow.duration + (this.upgrades.slowDuration || 0) * (this.def.upgrades.slowDuration?.increment || 0);
+        // Frostbite skill + Grandma's slow boost
+        const durMult = 1 + Game.computeStat('slowDurMult', 0);
+        return base * durMult;
       },
       getAura() {
         if (!this.def.aura) return 0;
@@ -251,7 +273,9 @@ const Game = {
     if (!upDef) return;
     const lvl = tower.upgrades[key] || 0;
     if (lvl >= upDef.max) return;
-    const cost = Math.floor(upDef.cost * Math.pow(1.5, lvl));
+    // Bargain Upgrades skill reduces upgrade cost
+    const upgMult = 1 + this.computeStat('upgradeCostMult', 0);
+    const cost = Math.floor(upDef.cost * Math.pow(1.5, lvl) * Math.max(0.3, upgMult));
     if (this.state.gold < cost) { UI.toast('Not enough gold!'); return; }
     this.state.gold -= cost;
     tower.upgrades[key] = lvl + 1;
@@ -263,7 +287,11 @@ const Game = {
   },
 
   sellTower(tower) {
-    const refund = Math.floor(tower.totalSpent * 0.7);
+    // Base 70% + prestige sellRefund 5% per level + skill sellFull
+    let pct = 0.7 + (this.save.prestigePerks.sellRefund || 0) * 0.05;
+    if (this.state.skillPoints && this.state.skillPoints.sell1) pct = 1.0;
+    pct = Math.min(1.0, pct);
+    const refund = Math.floor(tower.totalSpent * pct);
     this.state.gold += refund;
     const idx = this.state.towers.indexOf(tower);
     if (idx >= 0) this.state.towers.splice(idx, 1);
@@ -299,7 +327,9 @@ const Game = {
     const mapMods = (this.state && this.state.mods) || { enemyHp: 1, enemySpeed: 1, gold: 1 };
     const hpScale = (this.state.endlessMode ? scale * scale : 1) * (mapMods.enemyHp || 1);
     const goldScale = (this.state.endlessMode ? scale : 1) * (mapMods.gold || 1);
-    const speedScale = mapMods.enemySpeed || 1;
+    // Prestige: Heavy Air (-2% speed per level)
+    const prestigeSlow = 1 + (this.save.prestigePerks.enemySlow || 0) * -0.02;
+    const speedScale = (mapMods.enemySpeed || 1) * Math.max(0.5, prestigeSlow);
     const enemy = {
       type,
       def,
@@ -327,17 +357,48 @@ const Game = {
 
   damageEnemy(enemy, amount, srcTower) {
     if (enemy.hp <= 0) return;
+    const skills = this.state.skillPoints || {};
     // Crit
     const critChance = this.computeStat('critChance', 0) + (this.save.prestigePerks.critBase || 0) * 0.03;
     let dmg = amount;
+    let isCrit = false;
     if (Math.random() < critChance) {
       dmg *= 2;
+      isCrit = true;
       this.state.effects.push({ kind: 'text', text: 'CRIT!', x: enemy.x, y: enemy.y - 20, life: 0.6, vy: -40, color: '#ffd700' });
     }
-    // Armor reduces damage
-    if (enemy.armor) dmg *= (1 - enemy.armor);
+    // Boss bonus damage
+    if (enemy.isBoss) {
+      const bossMult = 1 + this.computeStat('bossDmgMult', 0);
+      dmg *= bossMult;
+    }
+    // First Strike (prestige): first shot of wave is x3
+    if (this.save.prestigePerks.firstStrike && !this.state.firstStrikeUsed && this.state.waveActive) {
+      dmg *= 3;
+      this.state.firstStrikeUsed = true;
+      this.state.effects.push({ kind: 'text', text: 'FIRST STRIKE!', x: enemy.x, y: enemy.y - 30, life: 0.8, vy: -40, color: '#ff6b6b' });
+    }
+    // Armor reduces damage, but armorPierce skill / weak-spot crits ignore
+    let effectiveArmor = enemy.armor || 0;
+    const pierce = this.computeStat('armorPierce', 0);
+    effectiveArmor = Math.max(0, effectiveArmor - pierce);
+    if (isCrit && skills.critPierce) effectiveArmor = 0;
+    if (effectiveArmor > 0) dmg *= (1 - effectiveArmor);
+    // Apply global slow on hit (iceField keystone-tier)
+    if (skills.iceField) {
+      const factor = 0.92; // 8% slower
+      enemy.slow = { factor: Math.min(enemy.slow ? enemy.slow.factor : 1, factor), until: performance.now()/1000 + 1 };
+    }
     enemy.hp -= dmg;
     enemy.flashUntil = performance.now() / 1000 + 0.08;
+    // Frenzy: track recent kills on tower
+    if (enemy.hp <= 0 && srcTower) {
+      const frenzy = this.computeStat('frenzy', 0);
+      if (frenzy > 0) {
+        srcTower.frenzyStacks = Math.min(5, (srcTower.frenzyStacks || 0) + 1);
+        srcTower.frenzyUntil = performance.now()/1000 + 1.5;
+      }
+    }
     if (enemy.hp <= 0) {
       this.killEnemy(enemy, srcTower);
     }
@@ -356,6 +417,8 @@ const Game = {
     let gold = enemy.gold;
     gold *= this.computeStat('goldMult', 1);
     gold *= 1 + (this.save.prestigePerks.globalGold || 0) * 0.05;
+    // Boss gold bonus (bountyHunter)
+    if (enemy.isBoss) gold *= (1 + this.computeStat('bossGold', 0));
     gold = Math.floor(gold);
     this.state.gold += gold;
     const scoreMult = (this.state.mods && this.state.mods.score) || 1;
@@ -399,6 +462,18 @@ const Game = {
         val += node.effect.value * lvl;
       });
     });
+    // Keystone bonuses
+    if (skills.gordon) {
+      if (type === 'damageMult') val += 0.30;
+      if (type === 'fireRateMult') val += 0.20;
+    }
+    if (skills.grandma) {
+      if (type === 'rangeMult') val += 0.25;
+      if (type === 'slowDurMult') val += 0.20;
+    }
+    if (skills.goldenAge) {
+      if (type === 'goldMult') val += 0.30;
+    }
     return val;
   },
 
@@ -421,6 +496,9 @@ const Game = {
     if (this.state.waveActive) return;
     if (this.state.wave >= MAX_WAVES && !this.state.endlessMode) return;
     this.state.waveActive = true;
+    // Reset per-wave trackers
+    this.state.lethalShieldsLeft = this.computeStat('lethalShield', 0);
+    this.state.firstStrikeUsed = false;
     const waveIdx = this.state.wave;
     let wave;
     if (waveIdx >= MAX_WAVES) {
@@ -471,19 +549,34 @@ const Game = {
     const mapMods = (this.state && this.state.mods) || { gold: 1, score: 1 };
     const waveBonus = Math.floor(wave.reward * this.computeStat('waveBonusMult', 1) * (mapMods.gold || 1));
     this.state.gold += waveBonus;
-    // Interest
+    // Interest (compound)
     const interest = this.computeStat('interest', 0);
     if (interest > 0) this.state.gold += Math.floor(this.state.gold * interest);
-    // Marinara mark
+    // Passive Tip Jar gold
+    const passive = this.computeStat('passiveGold', 0);
+    if (passive > 0) this.state.gold += passive;
+    // Marinara marks (base + bosses + skill/perk bonuses)
     let marks = 1;
     if (wave.boss) marks += 2;
     if (wave.final) marks += 5;
+    const newWave = this.state.wave + 1;
+    // Skill: Mark Collector — +1 mark per 10 waves
+    if (newWave % 10 === 0) marks += this.computeStat('extraMarks', 0);
+    // Keystone: Golden Age — +1 mark every wave
+    if (this.state.skillPoints && this.state.skillPoints.goldenAge) marks += 1;
+    // Prestige perk: Marinara Vintage (+10% per level)
+    const markBoost = 1 + (this.save.prestigePerks.marksBoost || 0) * 0.10;
+    marks = Math.max(1, Math.floor(marks * markBoost));
     this.state.marks += marks;
-    // Life regen
+    // Life regen — skill Soup of the Day fires every 4 waves now
     const regen = this.computeStat('lifeRegen', 0);
-    if (regen > 0 && (waveIdx + 1) % 5 === 0) {
+    if (regen > 0 && (waveIdx + 1) % 4 === 0) {
       this.state.lives = Math.min(this.state.maxLives, this.state.lives + Math.floor(regen));
     }
+    // Reset per-wave shields/firstStrike trackers
+    const lethal = this.computeStat('lethalShield', 0);
+    this.state.lethalShieldsLeft = lethal;
+    if (this.save.prestigePerks.firstStrike) this.state.firstStrikeUsed = false;
     this.state.wave++;
     if (this.state.wave > this.save.highWave) this.save.highWave = this.state.wave;
     // Per-map high wave tracking (used for unlocks)
@@ -556,14 +649,30 @@ const Game = {
     if (!node) return;
     const lvl = this.state.skillPoints[nodeId] || 0;
     if (lvl >= node.max) return;
+    // Check prerequisites
+    if (node.requires) {
+      for (const req of node.requires) {
+        if ((this.state.skillPoints[req.id] || 0) < req.lvl) {
+          UI.toast('Locked! Prerequisite not met.');
+          return;
+        }
+      }
+    }
     const cost = node.costs[lvl];
     if (this.state.marks < cost) { UI.toast('Not enough marks!'); return; }
     this.state.marks -= cost;
     this.state.skillPoints[nodeId] = lvl + 1;
-    // Apply effects that modify state directly
+    // Apply immediate effects
     if (node.effect.type === 'maxLives') {
       this.state.maxLives += node.effect.value;
       this.state.lives += node.effect.value;
+    }
+    // Keystone immediate bonuses
+    if (nodeId === 'grandma') {
+      this.state.maxLives += 15;
+      this.state.lives += 15;
+    } else if (nodeId === 'goldenAge') {
+      this.state.marks += 10;
     }
     UI.updateStats(this.state);
     if (UI.el.towerShop) UI.renderTowerShop();
@@ -647,7 +756,8 @@ const Game = {
 
   cycleSpeed() {
     const allowed3x = !!this.save.prestigePerks.speed3x;
-    const speeds = allowed3x ? [1, 2, 3] : [1, 2];
+    const allowed5x = !!this.save.prestigePerks.extraSpeed && allowed3x;
+    const speeds = allowed5x ? [1, 2, 3, 5] : (allowed3x ? [1, 2, 3] : [1, 2]);
     const idx = speeds.indexOf(this.speedMult);
     this.speedMult = speeds[(idx + 1) % speeds.length];
     UI.el.btnSpeed.textContent = '▶ ' + this.speedMult + 'x';
@@ -708,8 +818,26 @@ const Game = {
       }
       if (e.segIdx >= this.pathSegments.length) {
         // Reached goal - lose life
-        const damage = e.isBoss ? Math.max(3, Math.floor(e.maxHp / 1000)) : 1;
+        let damage = e.isBoss ? Math.max(3, Math.floor(e.maxHp / 1000)) : 1;
+        // Prestige: Tougher Plates (-10% per level)
+        const hitMult = 1 + (this.save.prestigePerks.enemyHitMult || 0) * -0.10;
+        damage = Math.max(1, Math.floor(damage * Math.max(0.3, hitMult)));
+        // Lethal Shield (basil skill) — survive a lethal hit once per wave
+        if (this.state.lethalShieldsLeft && this.state.lethalShieldsLeft > 0 && damage >= this.state.lives) {
+          this.state.lethalShieldsLeft--;
+          this.state.effects.push({ kind: 'text', text: 'SHIELDED!', x: e.x, y: e.y - 24, life: 1.0, vy: -30, color: '#6ab04c' });
+          damage = Math.max(0, this.state.lives - 1); // leave 1 life
+        }
         this.state.lives -= damage;
+        // Sauce Splatter (thorns) — when losing lives, damage all enemies on screen
+        const thorns = this.computeStat('thorns', 0);
+        if (thorns > 0) {
+          for (const other of enemies) {
+            if (other === e || other._dead) continue;
+            other.hp -= other.maxHp * thorns;
+            if (other.hp <= 0) this.killEnemy(other);
+          }
+        }
         enemies.splice(i, 1);
         this.state.effects.push({ kind: 'shake', life: 0.3 });
         this.playSound('lifeLost');
@@ -765,6 +893,7 @@ const Game = {
       if (!target) continue;
       tower.fireCooldown = 1 / fr;
       // Spawn projectile
+      const pierceCount = this.computeStat('pierce', 0);
       const proj = {
         x: tower.x, y: tower.y,
         targetEnemy: target,
@@ -775,7 +904,9 @@ const Game = {
         symbol: tower.def.projectile || '•',
         color: tower.def.color,
         srcTower: tower,
-        life: 3
+        life: 3,
+        pierceLeft: pierceCount,
+        hitSet: null
       };
       this.state.projectiles.push(proj);
       this.playSound('shoot');
@@ -801,6 +932,25 @@ const Game = {
       if (step >= d) {
         // Hit!
         this.onProjectileHit(p, t);
+        // Pierce: keep projectile alive and pick next target if any
+        if (p.pierceLeft && p.pierceLeft > 0 && !p.splash) {
+          p.pierceLeft--;
+          if (!p.hitSet) p.hitSet = new Set();
+          p.hitSet.add(t);
+          // Find next nearby enemy not yet hit
+          let next = null, bestD2 = Infinity;
+          for (const e of enemies) {
+            if (e === t || e._dead || e.hp <= 0) continue;
+            if (p.hitSet.has(e)) continue;
+            const ex = e.x - p.x, ey = e.y - p.y;
+            const d2 = ex*ex + ey*ey;
+            if (d2 < 90000 && d2 < bestD2) { bestD2 = d2; next = e; }
+          }
+          if (next) {
+            p.targetEnemy = next;
+            continue;
+          }
+        }
         projs.splice(i, 1);
       } else {
         p.x += (dx / d) * step;

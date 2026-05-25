@@ -160,24 +160,24 @@
 
 <!-- SKILL TREE MODAL -->
 <div id="skillTreeModal" class="modal">
-  <div class="modal-content wide">
+  <div class="modal-content xwide">
     <div class="modal-header">
       <h2>🌳 Skill Tree — Spend Marinara Marks</h2>
       <button class="close-btn" data-close="skillTreeModal">✖</button>
     </div>
-    <p>Marinara Marks: <b id="marksDisplay">0</b> &nbsp;|&nbsp; Earn 1+ per wave completed (bonus on bosses).</p>
-    <div class="skill-tree" id="skillTreeGrid"></div>
+    <p style="margin-bottom:8px">Marinara Marks: <b id="marksDisplay">0</b> &nbsp;|&nbsp; 🥫 Earn marks each wave (bonus on bosses). <span style="color:var(--gold)">Hover nodes</span> to see details. <span style="color:#ffd700">Glowing</span> = affordable; <span style="color:#c0392b">red</span> = need more marks; <span style="color:#888">faded</span> = prerequisite locked.</p>
+    <div class="skill-tree-grid" id="skillTreeGrid"></div>
   </div>
 </div>
 
 <!-- PRESTIGE MODAL -->
 <div id="prestigeModal" class="modal">
-  <div class="modal-content">
+  <div class="modal-content wide">
     <div class="modal-header">
       <h2>✨ Prestige — Boil It All Down!</h2>
       <button class="close-btn" data-close="prestigeModal">✖</button>
     </div>
-    <p>Reset your run for permanent <b>🍅 Sauce Points</b>. Spend Sauce on permanent perks.</p>
+    <p>Reset your run for permanent <b>🍅 Sauce Points</b>. Spend Sauce on permanent perks across 4 categories.</p>
     <div id="prestigeInfo"></div>
     <button class="big-btn danger" id="btnDoPrestige">🔥 Prestige Now</button>
     <h3>🌟 Permanent Perks</h3>
